@@ -429,11 +429,36 @@ await scenario('S7 verkennen & volgen', {
   const nPaths = (await page.$$('#map .leaflet-overlay-pane path')).length;
   t('routes getekend', nPaths > 3, String(nPaths));
 
-  // kies een route → info + Volg actief
-  await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
+  // brede raakzone aanwezig (onzichtbare dikke lijnen onder elke route)
+  const hasHit = await page.evaluate(() => {
+    const grp = MapView._exploreLayers[Object.keys(MapView._exploreLayers)[0]];
+    let hit = false; grp.eachLayer((l) => { if (l.options._hit && l.options.weight >= 20) hit = true; });
+    return hit;
+  });
+  t('brede raakzone per route', hasHit);
+
+  // tik NAAST een route (kaart-klik) selecteert de dichtstbijzijnde
+  await page.evaluate(() => {
+    const rt = MapView.exploreRoutes[0];
+    const p = rt.segments[0][0];
+    MapView.map.setView(p, 15);
+    // ~40 m naast de lijn tikken
+    MapView.map.fire('click', { latlng: L.latLng(p[0] + 0.00035, p[1]) });
+  });
   await sleep(300);
+  t('tik naast route selecteert (tolerantie)', await page.evaluate(() => MapView.selectedExploreId !== null));
   t('keuze toont naam + afstand', (await txt(page, '#explore-info')).includes('km'));
   t('Volg-knop actief', await page.$eval('#explore-follow', (el) => !el.disabled));
+
+  // 'Zoek hier' met identiek resultaat mag de laag NIET hertekenen (tik blijft raak)
+  await page.evaluate(() => { window.__gid = MapView.exploreGroup._leaflet_id; });
+  await page.click('#explore-search');
+  await page.waitForFunction(() => !document.getElementById('explore-search').disabled, null, { timeout: 20000 });
+  const preserved = await page.evaluate(() => MapView.exploreGroup._leaflet_id === window.__gid);
+  t('identiek resultaat → geen hertekening', preserved);
+  // herselecteer voor het vervolg (zoeken wist de keuze bewust)
+  await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
+  await sleep(200);
 
   // regio-autocache: gebied offline opgeslagen zonder knop
   await page.waitForFunction(() => /Gebied offline opgeslagen/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });

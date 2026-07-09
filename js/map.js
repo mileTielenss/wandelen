@@ -177,6 +177,11 @@
       this.exploreRoutes = [];
       this.selectedExploreId = null;
       if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
+      // Kaart-brede tik-fallback: een tik naast een route kiest de dichtstbijzijnde.
+      // Blijft werken óók als de routelaag net hertekend wordt.
+      if (!this._exploreTap) this._exploreTap = (e) => this._exploreNearestTap(e);
+      this.map.off('click', this._exploreTap);
+      this.map.on('click', this._exploreTap);
     },
 
     renderExplore(routes, onPick) {
@@ -192,11 +197,14 @@
       this.exploreRoutes.forEach((rt, idx) => {
         const col = rt.colour || Overpass.FALLBACK[idx % Overpass.FALLBACK.length];
         rt._col = col;
-        const grp = L.featureGroup(
-          rt.segments.map((seg) => L.polyline(seg, {
-            color: col, weight: 4, opacity: 0.72, lineJoin: 'round', lineCap: 'round',
-          }))
-        );
+        // Onzichtbare brede lijnen eronder = grote raakzone; je hoeft niet exact te tikken.
+        const hits = rt.segments.map((seg) => L.polyline(seg, {
+          color: '#000', weight: 26, opacity: 0, _hit: true,
+        }));
+        const lines = rt.segments.map((seg) => L.polyline(seg, {
+          color: col, weight: 4, opacity: 0.72, lineJoin: 'round', lineCap: 'round',
+        }));
+        const grp = L.featureGroup([...hits, ...lines]);
         grp.on('click', () => this.selectExplore(rt.id));
         grp.addTo(this.exploreGroup);
         this._exploreLayers[rt.id] = grp;
@@ -209,12 +217,29 @@
       }
     },
 
+    // Tik ergens op de kaart: kies de route binnen ~28 px van je vinger.
+    _exploreNearestTap(e) {
+      if (!this.exploreMode || !(this.exploreRoutes || []).length || !e.latlng) return;
+      const here = [e.latlng.lat, e.latlng.lng];
+      let best = null, bestD = Infinity;
+      for (const rt of this.exploreRoutes) {
+        const d = minDistToSegments(here, rt.segments);
+        if (d < bestD) { bestD = d; best = rt; }
+      }
+      const mpp = (40075016.686 * Math.cos((e.latlng.lat * Math.PI) / 180)) /
+        (256 * Math.pow(2, this.map.getZoom()));
+      if (best && bestD <= Math.max(30, 28 * mpp)) this.selectExplore(best.id);
+    },
+
     selectExplore(id) {
       this.selectedExploreId = id;
       for (const rid of Object.keys(this._exploreLayers || {})) {
         const grp = this._exploreLayers[rid];
         const on = rid === id;
-        grp.setStyle({ weight: on ? 7 : 3, opacity: on ? 1 : 0.3 });
+        grp.eachLayer((l) => {
+          if (l.options._hit) return; // raakzone blijft onzichtbaar
+          l.setStyle({ weight: on ? 7 : 3, opacity: on ? 1 : 0.3 });
+        });
         if (on) grp.bringToFront();
       }
       const rt = this.exploreRoutes.find((r) => r.id === id);
@@ -227,6 +252,7 @@
       this._exploreLayers = {};
       this.selectedExploreId = null;
       if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
+      if (this._exploreTap) this.map.off('click', this._exploreTap);
       this.clearLocation();
     },
 

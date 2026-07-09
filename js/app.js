@@ -360,11 +360,17 @@
         }
         // Verouderd antwoord (gebruiker zocht ondertussen opnieuw)? Negeren.
         if (mySeq !== this._exploreSeq || !this._exploreActive) return;
+        // Zelfde routes als wat al getoond wordt (bv. cache vs. vers)? Dan NIET
+        // hertekenen — anders verdwijnt de laag net onder de vinger van de
+        // gebruiker en gaat de tik verloren.
+        const shownIds = new Set((MapView.exploreRoutes || []).map((r) => r.id));
+        const sameAsShown = shownIds.size > 0 &&
+          routes.length === shownIds.size && routes.every((r) => shownIds.has(r.id));
         this._exploreRoutes = routes;
         this._exploreBounds = bounds;
         // Niet hertekenen over een gemaakte keuze heen.
         if (!this._selectedExplore) {
-          MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
+          if (!sameAsShown) MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
           $('explore-hint').textContent = routes.length
             ? `${routes.length} route${routes.length > 1 ? 's' : ''} — tik er één aan${fromCache ? ' (offline)' : ''}`
             : (fromCache ? 'geen offline routes voor dit gebied' : 'geen bewegwijzerde lussen hier gevonden');
