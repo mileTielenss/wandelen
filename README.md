@@ -35,19 +35,29 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - Geen kaart-animaties die onnodig hertekenen; “scherm aan houden” is optioneel en standaard uit.
 - Geen frameworks — lichte, vanilla JS.
 
-## Gebruiken / hosten
+## Hosten op GitHub Pages
 
-Het is statische HTML/JS/CSS. Host de map op eender welke statische webserver
-**over HTTPS** (nodig voor service worker, GPS en installatie als PWA), bv. GitHub Pages.
+De app staat op de `main`-branch en is statische HTML/JS/CSS. GitHub Pages aanzetten
+is een eenmalige klik:
 
-Lokaal testen:
+1. Ga naar **Settings → Pages**.
+2. Bij **Build and deployment → Source** kies **Deploy from a branch**.
+3. Kies **Branch: `main`** en map **`/ (root)`**, en klik **Save**.
+
+Na ~1 minuut staat de app live op:
+
+> **https://miletielenss.github.io/wandelen/**
+
+Elke push naar `main` werkt de site automatisch bij. Open de link op je telefoon en
+kies **“Toevoegen aan startscherm”** om de PWA te installeren (over HTTPS werken de
+service worker, GPS en offline-opslag).
+
+### Lokaal testen
 
 ```bash
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
-
-Installeer daarna via “Toevoegen aan startscherm”.
 
 ## Een nieuwe route toevoegen
 
