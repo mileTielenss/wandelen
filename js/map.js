@@ -239,11 +239,12 @@
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           this._setMode('located');
-          this._setGps('fix');
           this._updateLocation(pos, false);
           const ll = [pos.coords.latitude, pos.coords.longitude];
           const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
           this.map.setView(ll, z, { animate: true });
+          // Eenmalige meting klaar → GPS-hardware staat weer uit, dus lampje uit.
+          this._setGps('off');
           if (onFix) onFix(pos);
         },
         (err) => {
@@ -309,9 +310,10 @@
       }
       if (this._staleTimer) { clearInterval(this._staleTimer); this._staleTimer = null; }
       this.releaseWake();
-      // Behoud de laatste positie-marker maar val terug naar 'located'
+      // Behoud de laatste positie-marker maar val terug naar 'located'.
       this._setMode(this.locMarker ? 'located' : 'idle');
-      this._setGps(this.locMarker ? 'fix' : 'off');
+      // Watch is gestopt → GPS-hardware uit, dus lampje uit.
+      this._setGps('off');
     },
 
     clearLocation() {

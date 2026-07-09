@@ -11,6 +11,7 @@
   const App = {
     async init() {
       this.registerSW();
+      this._wrapFetch();
       this.prefs = this._loadPrefs();
       MapView.init((mode) => this._onMapMode(mode), {
         basemap: this.prefs.basemap,
@@ -26,27 +27,51 @@
     },
 
     // ---------- Status: internet + GPS ----------
+    // Telt lopende externe requests, zodat het internet-lampje enkel brandt
+    // terwijl de app écht iets opvraagt (en niet louter omdat er wifi is).
+    _netCount: 0,
+    _wrapFetch() {
+      const orig = window.fetch.bind(window);
+      const self = this;
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const external = /^https?:\/\//i.test(url) && !url.startsWith(location.origin);
+        if (!external) return orig(input, init);
+        self._netCount++;
+        self.updateStatus();
+        return orig(input, init).finally(() => {
+          self._netCount = Math.max(0, self._netCount - 1);
+          self.updateStatus();
+        });
+      };
+    },
+
     updateStatus() {
       const online = navigator.onLine;
       const gps = MapView.gpsState || 'off';
       const tracking = MapView.mode === 'tracking';
+      // Lampjes tonen GEBRUIK, geen beschikbaarheid: grijs = niet in gebruik.
       const gpsLabel = {
         off: 'gps uit',
         searching: 'gps zoekt…',
-        fix: tracking ? 'gps volgt' : 'gps ok',
+        fix: 'gps volgt',
         denied: 'gps geweigerd',
       }[gps] || 'gps uit';
       const gpsDot = {
         off: '',
         searching: 'mid pulse',
-        fix: 'ok' + (tracking ? ' pulse' : ''),
+        fix: 'ok pulse',
         denied: 'bad',
       }[gps] || '';
+      let netDot, netLabel;
+      if (!online) { netDot = 'bad'; netLabel = 'offline'; }
+      else if (this._netCount > 0) { netDot = 'ok pulse'; netLabel = 'internet actief'; }
+      else { netDot = ''; netLabel = 'internet uit'; }
       const tile = this._tilePct != null
         ? `<span class="stat"><span class="sdot mid pulse"></span>kaart ⬇ ${this._tilePct}%</span>`
         : '';
       const html =
-        `<span class="stat"><span class="sdot ${online ? 'ok' : 'bad'}"></span>${online ? 'internet' : 'offline'}</span>` +
+        `<span class="stat"><span class="sdot ${netDot}"></span>${netLabel}</span>` +
         `<span class="stat"><span class="sdot ${gpsDot}"></span>${gpsLabel}</span>` + tile;
       const a = $('statusbar-list'), b = $('statusbar-map');
       if (a) a.innerHTML = html;
