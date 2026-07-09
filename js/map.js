@@ -16,8 +16,15 @@
     wakeLock: null,
     _onModeChange: null,
 
-    init(onModeChange) {
+    basemapKey: null,
+    nodeLayer: null,
+    horecaLayer: null,
+    showNodes: true,
+    showHoreca: true,
+
+    init(onModeChange, opts) {
       this._onModeChange = onModeChange;
+      opts = opts || {};
       this.map = L.map('map', {
         zoomControl: false,
         attributionControl: true,
@@ -25,18 +32,31 @@
         fadeAnimation: false,
         tap: true,
       });
-      L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(this.map);
+      this.attrib = L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(this.map);
       // Geen zoomknoppen: touch-first (knijpen/scrollen zoomt) houdt de kaart rustig.
 
-      this.tileLayer = L.tileLayer(Tiles.TILE_URL('{x}', '{y}', '{z}'), {
-        maxZoom: 19,
+      this.showNodes = opts.showNodes !== false;
+      this.showHoreca = opts.showHoreca !== false;
+      this.setBasemap(opts.basemap || Tiles.DEFAULT_BASEMAP);
+    },
+
+    /** Wissel de onderliggende kaartlaag (scherp/satelliet/topo). */
+    setBasemap(key) {
+      const bm = Tiles.getBasemap(key);
+      this.basemapKey = bm.key;
+      if (this.tileLayer) this.tileLayer.remove();
+      this.tileLayer = L.tileLayer(bm.url, {
+        maxZoom: bm.maxZoom,
+        maxNativeZoom: bm.maxNativeZoom,
         minZoom: 8,
+        // tileSize 256: @2x-bronnen leveren 512px op 256 CSS-px = scherp.
+        tileSize: 256,
         crossOrigin: true,
-        attribution: '© OpenStreetMap',
-        // Houd tegels in de cache voor soepel offline pannen
+        attribution: bm.attribution,
         keepBuffer: 4,
       });
       this.tileLayer.addTo(this.map);
+      this.tileLayer.bringToBack();
     },
 
     show(route) {
@@ -68,7 +88,63 @@
         this._cum[i] = this._cum[i - 1] + haversineM(latlngs[i - 1], latlngs[i]);
       }
       this._total = this._cum[latlngs.length - 1] || route.distance || 0;
+      this.renderOverlays();
       this.recenter();
+    },
+
+    // ---------- Overlays: wandelknooppunten + horeca ----------
+    renderOverlays() {
+      if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
+      if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
+      const r = this.route;
+      if (!r) return;
+
+      // Knooppunten binnen ~200 m van de route (de knooppunten die je route volgt).
+      const nodes = (r.nodes || []).filter(
+        (n) => nearestDistanceMeters(n.lat, n.lng, this._latlngs) <= 200
+      );
+      this.nodeLayer = L.layerGroup(
+        nodes.map((n) => L.marker([n.lat, n.lng], {
+          icon: L.divIcon({
+            className: '', html: `<div class="kp-badge">${escapeHtml(n.ref)}</div>`,
+            iconSize: [30, 30], iconAnchor: [15, 15],
+          }),
+          keyboard: false,
+        }).bindTooltip('Wandelknooppunt ' + n.ref, { direction: 'top' }))
+      );
+
+      // Horeca binnen ~450 m van de route (een kleine omweg waard).
+      const horeca = (r.horeca || []).filter(
+        (h) => nearestDistanceMeters(h.lat, h.lng, this._latlngs) <= 450
+      );
+      this.horecaLayer = L.layerGroup(
+        horeca.map((h) => L.marker([h.lat, h.lng], {
+          icon: L.divIcon({
+            className: '', html: `<div class="horeca-pin" title="${escapeHtml(h.n)}">${horecaEmoji(h.t)}</div>`,
+            iconSize: [24, 24], iconAnchor: [12, 12],
+          }),
+          keyboard: false,
+        }).bindTooltip((h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t), { direction: 'top' }))
+      );
+
+      this._nodeCount = nodes.length;
+      this._horecaCount = horeca.length;
+      this.applyOverlayVisibility();
+    },
+
+    applyOverlayVisibility() {
+      if (this.nodeLayer) {
+        if (this.showNodes) this.nodeLayer.addTo(this.map); else this.nodeLayer.remove();
+      }
+      if (this.horecaLayer) {
+        if (this.showHoreca) this.horecaLayer.addTo(this.map); else this.horecaLayer.remove();
+      }
+    },
+
+    setOverlayVisible(kind, on) {
+      if (kind === 'nodes') this.showNodes = on;
+      if (kind === 'horeca') this.showHoreca = on;
+      this.applyOverlayVisibility();
     },
 
     recenter() {
@@ -234,6 +310,23 @@
     const s = Math.sin(dLat / 2) ** 2 +
       Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function horecaEmoji(t) {
+    return ({
+      cafe: '☕', restaurant: '🍽️', bar: '🍸', pub: '🍺', fast_food: '🍟',
+      biergarten: '🍺', ice_cream: '🍦', bakery: '🥖',
+    })[t] || '🍴';
+  }
+  function horecaLabel(t) {
+    return ({
+      cafe: 'Café', restaurant: 'Restaurant', bar: 'Bar', pub: 'Café/pub', fast_food: 'Snackbar',
+      biergarten: 'Biergarten', ice_cream: 'IJssalon', bakery: 'Bakkerij',
+    })[t] || 'Horeca';
   }
 
   function friendlyGeoError(err) {

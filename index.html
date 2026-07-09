@@ -64,6 +64,7 @@
     <div id="offroute-banner" class="offroute" hidden></div>
 
     <div class="map-controls">
+      <button id="btn-layers" class="fab ghost" title="Kaartlagen" aria-label="Kaartlagen">🗺</button>
       <button id="btn-recenter" class="fab ghost" title="Op route centreren" aria-label="Op route centreren">⤢</button>
       <button id="btn-locate" class="fab" title="Toon mijn locatie (eenmalig)" aria-label="Toon mijn locatie">◎</button>
       <button id="btn-track" class="fab track-off" title="Volg mijn locatie" aria-label="Volg mijn locatie">➤</button>
@@ -100,6 +101,28 @@
       <div class="sheet-actions">
         <button id="tile-cancel" class="ghost">Sluiten</button>
         <button id="tile-start" class="primary">Downloaden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ KAARTLAGEN OVERLAY ============ -->
+  <div id="layers-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2>Kaartlagen</h2>
+      <fieldset class="opt-group">
+        <legend>Onderkaart</legend>
+        <label class="opt"><input type="radio" name="basemap" value="voyager" /> <span>Kaart — scherp <small>(@2x, haarscherp)</small></span></label>
+        <label class="opt"><input type="radio" name="basemap" value="satellite" /> <span>Satelliet <small>(luchtfoto, veel detail)</small></span></label>
+        <label class="opt"><input type="radio" name="basemap" value="topo" /> <span>Topografisch <small>(hoogtelijnen)</small></span></label>
+      </fieldset>
+      <fieldset class="opt-group">
+        <legend>Overlays</legend>
+        <label class="opt"><input type="checkbox" id="ov-nodes" /> <span>Wandelknooppunten <small class="ov-count" id="ov-nodes-count"></small></span></label>
+        <label class="opt"><input type="checkbox" id="ov-horeca" /> <span>Horeca <small class="ov-count" id="ov-horeca-count"></small></span></label>
+      </fieldset>
+      <p class="tiny" id="overlays-note"></p>
+      <div class="sheet-actions">
+        <button id="layers-close" class="primary">Klaar</button>
       </div>
     </div>
   </div>
@@ -144,6 +167,7 @@
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/db.js"></script>
   <script src="js/komoot.js"></script>
+  <script src="js/overpass.js"></script>
   <script src="js/tiles.js"></script>
   <script src="js/map.js"></script>
   <script src="js/app.js"></script>

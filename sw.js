@@ -1,9 +1,11 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
-const APP_CACHE = 'wandelen-app-v1';
+const APP_CACHE = 'wandelen-app-v2';
 const TILE_CACHE = 'wandelen-tiles-v1';
-const TILE_HOSTS = ['tile.openstreetmap.org', 'a.tile.openstreetmap.org', 'b.tile.openstreetmap.org', 'c.tile.openstreetmap.org'];
+// Tegelbronnen (host-achtervoegsels) die we offline cachen.
+const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];
+function isTileHost(host) { return TILE_DOMAINS.some((d) => host === d || host.endsWith('.' + d) || host.endsWith(d)); }
 
 const APP_ASSETS = [
   './',
@@ -12,6 +14,7 @@ const APP_ASSETS = [
   'css/style.css',
   'js/db.js',
   'js/komoot.js',
+  'js/overpass.js',
   'js/tiles.js',
   'js/map.js',
   'js/app.js',
@@ -52,7 +55,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   // Kaarttegels: cache-first (serveren zonder internet, en nieuw bekeken tegels bewaren)
-  if (TILE_HOSTS.includes(url.hostname)) {
+  if (isTileHost(url.hostname)) {
     event.respondWith(tileStrategy(req));
     return;
   }

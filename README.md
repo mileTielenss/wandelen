@@ -23,9 +23,16 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Hoe ver nog?** Zodra je locatie bekend is, toont de balk bovenaan je **voortgang
   langs de route**: bv. *km 8,4 van 18,8 · nog 10,4 km · 45%*. Ben je van het pad af,
   dan zie je hoever (en bij welk punt je het dichtst zit).
-- **Volledig offline**: de app-code én de route worden lokaal opgeslagen. Sla ook de
-  **kaarttegels** rond een route op via **⬇ Offline** (doe dit één keer met wifi), zodat
-  de kaart zonder internet werkt.
+- **Scherpe kaart + kaartlagen** (🗺-knop): kies tussen **Kaart — scherp** (@2x-tegels,
+  haarscherp op retina, ook uitgezoomd), **Satelliet** (luchtfoto) en **Topografisch**
+  (hoogtelijnen). Je keuze blijft bewaard.
+- **Wandelknooppunten**: de genummerde knooppunten die je route volgt worden als badges
+  getoond (bv. **71**), zodat je onderweg de bordjes kan volgen. Aan/uit via 🗺.
+- **Horeca**: cafés, restaurants, snackbars en bakkers langs de route staan als icoontjes
+  op de kaart. Standaard aan; aan/uit via 🗺.
+- **Volledig offline**: de app-code, de route, de knooppunten en horeca worden lokaal
+  opgeslagen. Sla ook de **kaarttegels** rond een route op via **⬇ Offline** (doe dit één
+  keer met wifi), zodat ook de onderkaart zonder internet werkt.
 
 ## Batterijzuinig ontwerp
 

@@ -11,11 +11,29 @@
   const App = {
     async init() {
       this.registerSW();
-      MapView.init((mode) => this._onMapMode(mode));
+      this.prefs = this._loadPrefs();
+      MapView.init((mode) => this._onMapMode(mode), {
+        basemap: this.prefs.basemap,
+        showNodes: this.prefs.showNodes,
+        showHoreca: this.prefs.showHoreca,
+      });
       this._wire();
       await this.seedDefault();
       await this.refreshList();
       this._handleSharedUrl();
+    },
+
+    _loadPrefs() {
+      let p = {};
+      try { p = JSON.parse(localStorage.getItem('wandelen-prefs') || '{}'); } catch (_) {}
+      return {
+        basemap: p.basemap || 'voyager',
+        showNodes: p.showNodes !== false,
+        showHoreca: p.showHoreca !== false,
+      };
+    },
+    _savePrefs() {
+      try { localStorage.setItem('wandelen-prefs', JSON.stringify(this.prefs)); } catch (_) {}
     },
 
     // ---------- Service worker ----------
@@ -141,6 +159,26 @@
       MapView.show(r);
       $('offroute-banner').hidden = true;
       this._resetLocButtons();
+      this.maybeFetchOverlays(r);
+    },
+
+    // Knooppunten + horeca ophalen (eenmalig, indien online) en offline bewaren.
+    async maybeFetchOverlays(route) {
+      if (route.overlaysFetched) return;
+      if (!navigator.onLine) return;
+      try {
+        const bounds = Overpass.boundsFromCoords(route.coords);
+        const { nodes, horeca } = await Overpass.fetchOverlays(bounds);
+        route.nodes = nodes;
+        route.horeca = horeca;
+        route.overlaysFetched = true;
+        await DB.put(route);
+        if (_current && _current.id === route.id) {
+          MapView.route = route;
+          MapView.renderOverlays();
+        }
+        this.toast(`Knooppunten (${nodes.length}) & horeca (${horeca.length}) geladen`);
+      } catch (_) { /* offline of Overpass onbereikbaar: stil overslaan */ }
     },
 
     // ---------- Hernoem / verwijder menu ----------
@@ -185,20 +223,22 @@
     },
     _updateTileEstimate() {
       const detail = $('tile-detail').value;
-      const est = Tiles.estimate(_current.coords, detail);
+      const bm = Tiles.getBasemap(this.prefs.basemap);
+      const est = Tiles.estimate(_current.coords, detail, bm);
       $('tile-estimate').textContent =
-        `± ${est.count} tegels · ongeveer ${est.mb} MB. Doe dit met wifi.`;
+        `Kaart “${bm.name}” · ± ${est.count} tegels · ongeveer ${est.mb} MB. Doe dit met wifi.`;
     },
     async startTileDownload() {
       if (!_current) return;
       const detail = $('tile-detail').value;
+      const bm = Tiles.getBasemap(this.prefs.basemap);
       $('tile-progress').hidden = false;
       $('tile-start').disabled = true;
       $('tile-cancel').textContent = 'Stop';
       _tileAbort = new AbortController();
       try {
         const result = await Tiles.download(
-          _current.coords, detail,
+          _current.coords, detail, bm,
           (done, total) => {
             const pct = Math.round((done / total) * 100);
             $('tile-bar-fill').style.width = pct + '%';
@@ -227,6 +267,33 @@
     cancelTile() {
       if (_tileAbort) { _tileAbort.abort(); return; }
       this._hide('tile-overlay');
+    },
+
+    // ---------- Kaartlagen ----------
+    openLayers() {
+      const bm = this.prefs.basemap;
+      const radio = document.querySelector(`input[name="basemap"][value="${bm}"]`);
+      if (radio) radio.checked = true;
+      $('ov-nodes').checked = this.prefs.showNodes;
+      $('ov-horeca').checked = this.prefs.showHoreca;
+      const nc = MapView._nodeCount, hc = MapView._horecaCount;
+      $('ov-nodes-count').textContent = nc != null ? `(${nc} op deze route)` : '';
+      $('ov-horeca-count').textContent = hc != null ? `(${hc} in de buurt)` : '';
+      $('overlays-note').textContent = (_current && !_current.overlaysFetched && !navigator.onLine)
+        ? 'Knooppunten/horeca nog niet geladen — verbind één keer met internet.'
+        : 'Overlays worden bij de route offline bewaard.';
+      this._show('layers-overlay');
+    },
+    setBasemap(key) {
+      this.prefs.basemap = key;
+      this._savePrefs();
+      MapView.setBasemap(key);
+    },
+    setOverlay(kind, on) {
+      if (kind === 'nodes') this.prefs.showNodes = on;
+      if (kind === 'horeca') this.prefs.showHoreca = on;
+      this._savePrefs();
+      MapView.setOverlayVisible(kind, on);
     },
 
     // ---------- Locatie-knoppen ----------
@@ -334,6 +401,14 @@
         else MapView.releaseWake();
       });
 
+      $('btn-layers').addEventListener('click', () => this.openLayers());
+      $('layers-close').addEventListener('click', () => this._hide('layers-overlay'));
+      for (const radio of document.querySelectorAll('input[name="basemap"]')) {
+        radio.addEventListener('change', (e) => { if (e.target.checked) this.setBasemap(e.target.value); });
+      }
+      $('ov-nodes').addEventListener('change', (e) => this.setOverlay('nodes', e.target.checked));
+      $('ov-horeca').addEventListener('change', (e) => this.setOverlay('horeca', e.target.checked));
+
       $('btn-tiles').addEventListener('click', () => this.openTileSheet());
       $('tile-detail').addEventListener('change', () => this._updateTileEstimate());
       $('tile-start').addEventListener('click', () => this.startTileDownload());
@@ -344,7 +419,7 @@
       $('menu-delete').addEventListener('click', () => this.deleteMenu());
 
       // Overlays sluiten bij tik op achtergrond
-      for (const id of ['menu-overlay', 'about-overlay']) {
+      for (const id of ['menu-overlay', 'about-overlay', 'layers-overlay']) {
         $(id).addEventListener('click', (e) => { if (e.target.id === id) this._hide(id); });
       }
 
