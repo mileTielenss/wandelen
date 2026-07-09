@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#155e48" />
+  <meta name="description" content="Bekijk wandelroutes volledig offline met minimaal batterijverbruik." />
+  <title>Wandelen — Offline routes</title>
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/favicon-64.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Wandelen" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ============ START / ROUTELIJST ============ -->
+  <section id="screen-list" class="screen is-active">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/favicon-64.png" alt="" width="28" height="28" />
+        <h1>Wandelen</h1>
+      </div>
+      <button id="btn-about" class="icon-btn" title="Info" aria-label="Info">&#9432;</button>
+    </header>
+
+    <div class="loader-bar">
+      <input id="url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+             placeholder="Plak een Komoot-tour URL…" aria-label="Komoot URL" />
+      <button id="btn-load" class="primary">Laden</button>
+    </div>
+    <p id="load-status" class="load-status" hidden></p>
+
+    <div id="route-list" class="route-list" aria-live="polite"></div>
+
+    <p id="list-empty" class="empty" hidden>
+      Nog geen routes. Plak hierboven een Komoot-URL en tik op <strong>Laden</strong>.
+    </p>
+
+    <footer class="hint">
+      Werkt volledig offline. Tik op een route om ze te openen. Lang indrukken of het
+      <span aria-hidden="true">⋯</span>-menu om te hernoemen of te verwijderen.
+    </footer>
+  </section>
+
+  <!-- ============ KAART / ROUTE ============ -->
+  <section id="screen-map" class="screen">
+    <div id="map"></div>
+
+    <header class="map-topbar">
+      <button id="btn-back" class="chip" aria-label="Terug">‹ Terug</button>
+      <div class="map-title">
+        <span id="map-route-name">Route</span>
+        <small id="map-route-meta"></small>
+      </div>
+      <button id="btn-tiles" class="chip" title="Kaart offline opslaan">⬇ Offline</button>
+    </header>
+
+    <div id="offroute-banner" class="offroute" hidden></div>
+
+    <div class="map-controls">
+      <button id="btn-recenter" class="fab ghost" title="Op route centreren" aria-label="Op route centreren">⤢</button>
+      <button id="btn-locate" class="fab" title="Toon mijn locatie (eenmalig)" aria-label="Toon mijn locatie">◎</button>
+      <button id="btn-track" class="fab track-off" title="Volg mijn locatie" aria-label="Volg mijn locatie">➤</button>
+    </div>
+
+    <div id="track-hud" class="track-hud" hidden>
+      <span class="dot"></span>
+      <span id="track-text">Live tracking</span>
+      <label class="awake">
+        <input type="checkbox" id="chk-awake" /> scherm aan
+      </label>
+      <button id="btn-track-stop" class="stop">Stop</button>
+    </div>
+  </section>
+
+  <!-- ============ TILE-DOWNLOAD OVERLAY ============ -->
+  <div id="tile-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2>Kaart offline opslaan</h2>
+      <p>Sla de kaarttegels rond deze route op zodat je ze zonder internet kan bekijken. Doe dit één keer met wifi.</p>
+      <label class="zoom-row">
+        Detailniveau
+        <select id="tile-detail">
+          <option value="overview">Overzicht — klein (z12–14)</option>
+          <option value="normal" selected>Normaal — aanbevolen (z12–16)</option>
+          <option value="fine">Fijn — groot (z12–17)</option>
+        </select>
+      </label>
+      <p id="tile-estimate" class="tile-estimate"></p>
+      <div id="tile-progress" class="tile-progress" hidden>
+        <div class="bar"><div id="tile-bar-fill"></div></div>
+        <span id="tile-progress-text">0%</span>
+      </div>
+      <div class="sheet-actions">
+        <button id="tile-cancel" class="ghost">Sluiten</button>
+        <button id="tile-start" class="primary">Downloaden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RENAME / MENU OVERLAY ============ -->
+  <div id="menu-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2 id="menu-title">Route</h2>
+      <label class="rename-row">
+        Naam
+        <input id="rename-input" type="text" maxlength="80" />
+      </label>
+      <div class="sheet-actions between">
+        <button id="menu-delete" class="danger">Verwijderen</button>
+        <div>
+          <button id="menu-cancel" class="ghost">Annuleren</button>
+          <button id="menu-save" class="primary">Opslaan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ABOUT OVERLAY ============ -->
+  <div id="about-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <h2>Over deze app</h2>
+      <ul class="about-list">
+        <li><strong>Volledig offline.</strong> Routes en kaart worden lokaal opgeslagen.</li>
+        <li><strong>Zuinig.</strong> GPS staat standaard uit. <em>Toon locatie</em> doet één meting; <em>Volg</em> is een aparte stand.</li>
+        <li><strong>Komoot.</strong> Plak een tour-URL met <code>share_token</code> om de route in te laden.</li>
+        <li><strong>Offline kaart.</strong> Open een route en tik <em>⬇ Offline</em> om de tegels op te slaan.</li>
+      </ul>
+      <p class="tiny">Kaartdata © OpenStreetMap-bijdragers. Enkel voor persoonlijk gebruik.</p>
+      <div class="sheet-actions">
+        <button id="about-close" class="primary">Sluiten</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/komoot.js"></script>
+  <script src="js/tiles.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
