@@ -39,9 +39,10 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
   de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
-- **Status-indicators**: bovenaan zie je altijd of je **internet** hebt en wat de
-  **GPS** doet (uit / zoekt… / ok / volgt / geweigerd). Tracking claimt pas "volgt"
-  als er echt een GPS-fix is.
+- **Status-indicators**: de lampjes bovenaan tonen **gebruik**, geen beschikbaarheid —
+  grijs als de app niets doet, **internet actief** alleen tijdens echt verkeer, en de
+  GPS-stand (uit / zoekt… / volgt / geweigerd). Tracking claimt pas "volgt" als er
+  echt een GPS-fix is.
 
 > Kaarttegels voor een héél land (bv. heel België) zijn bewust niet mogelijk: dat zijn
 > tientallen GB en de tegel-providers staan bulk-downloads niet toe. De streek waar je
@@ -114,10 +115,12 @@ wordt functioneel getest via de offline-herstart-scenario's.
 | Onderdeel | Keuze |
 |---|---|
 | Kaart | [Leaflet](https://leafletjs.com/) 1.9.4 (lokaal meegeleverd) |
-| Tegels | OpenStreetMap, corridor-gewijs gecachet in de Cache Storage |
-| Opslag routes | IndexedDB |
-| Offline | Service worker (app-shell + tegels) |
-| Routebron | Komoot publieke tour-API (`api.komoot.de/v007/tours/…`) |
+| Tegels | Carto Voyager @2x (standaard), Esri World Imagery, OpenTopoMap — corridor-/regiogewijs in de Cache Storage |
+| Opslag | IndexedDB (routes + regio's), Cache Storage (app-shell + tegels), localStorage (voorkeuren) |
+| Offline | Service worker: app-shell stale-while-revalidate, tegels cache-first |
+| Routebronnen | Komoot publieke tour-API (`api.komoot.de/v007/tours/…`) en OSM/Overpass (lwn-routes, knooppunten, horeca) |
 
-Kaartdata © OpenStreetMap-bijdragers. Enkel voor persoonlijk gebruik — respecteer de
-[tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+Voor architectuur, werkafspraken en uitbreiden: zie **[CLAUDE.md](CLAUDE.md)**.
+
+Kaartdata © OpenStreetMap-bijdragers © CARTO, luchtfoto's Esri. Enkel voor persoonlijk
+gebruik — respecteer de fair-use-voorwaarden van de tegel-providers.
