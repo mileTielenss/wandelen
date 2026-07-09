@@ -3,8 +3,9 @@
   'use strict';
 
   const DB_NAME = 'wandelen';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = 'routes';
+  const REGIONS = 'regions';
   let _dbPromise = null;
 
   function open() {
@@ -15,6 +16,9 @@
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(REGIONS)) {
+          db.createObjectStore(REGIONS, { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -73,6 +77,24 @@
       return new Promise((resolve, reject) => {
         const req = store.count();
         req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    },
+
+    // ---------- Offline opgeslagen regio's ----------
+    async putRegion(region) {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const req = db.transaction(REGIONS, 'readwrite').objectStore(REGIONS).put(region);
+        req.onsuccess = () => resolve(region);
+        req.onerror = () => reject(req.error);
+      });
+    },
+    async allRegions() {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const req = db.transaction(REGIONS, 'readonly').objectStore(REGIONS).getAll();
+        req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => reject(req.error);
       });
     },

@@ -27,12 +27,12 @@
       opts = opts || {};
       this.map = L.map('map', {
         zoomControl: false,
-        attributionControl: true,
+        // Geen tegel-banner op de kaart; de bronvermelding staat in het ℹ️-scherm.
+        attributionControl: false,
         // Zuinig: geen vloeiende zoom-animaties nodig
         fadeAnimation: false,
         tap: true,
       });
-      this.attrib = L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(this.map);
       // Geen zoomknoppen: touch-first (knijpen/scrollen zoomt) houdt de kaart rustig.
 
       this.showNodes = opts.showNodes !== false;
@@ -60,6 +60,8 @@
     },
 
     show(route) {
+      if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
+      this.exploreMode = false;
       this.route = route;
       const latlngs = route.coords.map((c) => [c[0], c[1]]);
 
@@ -148,21 +150,98 @@
     },
 
     recenter() {
+      if (this.exploreMode && this.exploreGroup) {
+        try { this.map.fitBounds(this.exploreGroup.getBounds(), { padding: [40, 40] }); } catch (_) {}
+        return;
+      }
       if (this.line) this.map.fitBounds(this.line.getBounds(), { padding: [40, 40] });
     },
 
+    // ---------- Verken-modus: alle routes in de buurt tonen ----------
+    clearRouteVisual() {
+      if (this.line) { this.line.remove(); this.line = null; }
+      if (this.startMarker) { this.startMarker.remove(); this.startMarker = null; }
+      if (this.endMarker) { this.endMarker.remove(); this.endMarker = null; }
+      if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
+      if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
+    },
+
+    enterExplore() {
+      this.clearRouteVisual();
+      this.clearLocation();
+      this.exploreMode = true;
+      this.route = null;
+      this._latlngs = null;
+      this.exploreRoutes = [];
+      this.selectedExploreId = null;
+      if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
+    },
+
+    renderExplore(routes, onPick) {
+      this.exploreMode = true;
+      this.exploreRoutes = routes || [];
+      this._onExplorePick = onPick;
+      this.selectedExploreId = null;
+      if (this.exploreGroup) { this.exploreGroup.remove(); }
+      this.exploreGroup = L.layerGroup().addTo(this.map);
+      this._exploreLayers = {};
+
+      const bounds = [];
+      this.exploreRoutes.forEach((rt, idx) => {
+        const col = rt.colour || Overpass.FALLBACK[idx % Overpass.FALLBACK.length];
+        rt._col = col;
+        const grp = L.featureGroup(
+          rt.segments.map((seg) => L.polyline(seg, {
+            color: col, weight: 4, opacity: 0.72, lineJoin: 'round', lineCap: 'round',
+          }))
+        );
+        grp.on('click', () => this.selectExplore(rt.id));
+        grp.addTo(this.exploreGroup);
+        this._exploreLayers[rt.id] = grp;
+        try { bounds.push(grp.getBounds()); } catch (_) {}
+      });
+      // Alleen op de routes inzoomen als we (nog) geen locatie tonen.
+      if (bounds.length && !this.locMarker) {
+        const fg = bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0]));
+        try { this.map.fitBounds(fg, { padding: [40, 40] }); } catch (_) {}
+      }
+    },
+
+    selectExplore(id) {
+      this.selectedExploreId = id;
+      for (const rid of Object.keys(this._exploreLayers || {})) {
+        const grp = this._exploreLayers[rid];
+        const on = rid === id;
+        grp.setStyle({ weight: on ? 7 : 3, opacity: on ? 1 : 0.3 });
+        if (on) grp.bringToFront();
+      }
+      const rt = this.exploreRoutes.find((r) => r.id === id);
+      if (this._onExplorePick && rt) this._onExplorePick(rt);
+    },
+
+    clearExplore() {
+      this.exploreMode = false;
+      this.exploreRoutes = [];
+      this._exploreLayers = {};
+      this.selectedExploreId = null;
+      if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
+      this.clearLocation();
+    },
+
     // ---------- Locatie (eenmalig) ----------
-    locateOnce() {
-      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); return; }
+    locateOnce(onFix, onErr) {
+      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); if (onErr) onErr(); return; }
       App.toast('Locatie bepalen…');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           this._setMode('located');
           this._updateLocation(pos, false);
           const ll = [pos.coords.latitude, pos.coords.longitude];
-          this.map.setView(ll, Math.max(this.map.getZoom(), 15), { animate: true });
+          const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
+          this.map.setView(ll, z, { animate: true });
+          if (onFix) onFix(pos);
         },
-        (err) => App.toast('Locatie mislukt: ' + friendlyGeoError(err)),
+        (err) => { App.toast('Locatie mislukt: ' + friendlyGeoError(err)); if (onErr) onErr(err); },
         // Verse meting bij elke tik (geen oude gecachte positie) — dat is net de bedoeling.
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -230,7 +309,17 @@
           this.accCircle.setLatLng(ll).setRadius(acc);
         }
       }
-      // Afstand tot route + voortgang langs de route ("hoe ver nog")
+      // In verken-modus: welke routes loop je op? Anders: voortgang op je route.
+      if (this.exploreMode) {
+        const here = [pos.coords.latitude, pos.coords.longitude];
+        const on = this.exploreRoutes
+          .map((rt) => ({ rt, d: minDistToSegments(here, rt.segments) }))
+          .filter((x) => x.d <= 30)
+          .sort((a, b) => a.d - b.d)
+          .map((x) => x.rt);
+        if (App.onExploreLocate) App.onExploreLocate(on);
+        return;
+      }
       const p = projectOnRoute(pos.coords.latitude, pos.coords.longitude, this._latlngs, this._cum);
       App.setOffRoute({
         meters: p.dist,
@@ -282,6 +371,18 @@
     return projectOnRoute(lat, lng, latlngs, buildCum(latlngs)).dist;
   }
 
+  // Kleinste afstand (m) van een punt tot een verzameling way-segmenten.
+  function minDistToSegments(here, segments) {
+    let best = Infinity;
+    for (const seg of segments || []) {
+      for (let i = 1; i < seg.length; i++) {
+        const d = segProject(here[0], here[1], seg[i - 1], seg[i]).dist;
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  }
+
   function buildCum(latlngs) {
     const cum = [0];
     for (let i = 1; i < latlngs.length; i++) cum[i] = cum[i - 1] + haversineM(latlngs[i - 1], latlngs[i]);
@@ -316,11 +417,9 @@
     return String(s).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
-  function horecaEmoji(t) {
-    return ({
-      cafe: '☕', restaurant: '🍽️', bar: '🍸', pub: '🍺', fast_food: '🍟',
-      biergarten: '🍺', ice_cream: '🍦', bakery: '🥖',
-    })[t] || '🍴';
+  function horecaEmoji(_t) {
+    // Eén herkenbaar koffieteken voor alle horeca (het type staat in de tooltip).
+    return '☕';
   }
   function horecaLabel(t) {
     return ({

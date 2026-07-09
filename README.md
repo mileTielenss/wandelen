@@ -30,9 +30,19 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   getoond (bv. **71**), zodat je onderweg de bordjes kan volgen. Aan/uit via 🗺.
 - **Horeca**: cafés, restaurants, snackbars en bakkers langs de route staan als icoontjes
   op de kaart. Standaard aan; aan/uit via 🗺.
+- **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): opent een kaart met
+  álle bewegwijzerde wandellussen rond je, elk in **de kleur van de pijltjes** en met de
+  **afstand**. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
+  dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
+  Met **⬇ Regio** sla je een heel gebied offline op (kaarttegels + alle routes + horeca),
+  zodat je ook zonder internet nieuwe wandelingen kan kiezen.
 - **Volledig offline**: de app-code, de route, de knooppunten en horeca worden lokaal
   opgeslagen. Sla ook de **kaarttegels** rond een route op via **⬇ Offline** (doe dit één
   keer met wifi), zodat ook de onderkaart zonder internet werkt.
+
+> Kaarttegels voor een héél land (bv. heel België) zijn bewust niet mogelijk: dat zijn
+> tientallen GB en de tegel-providers staan bulk-downloads niet toe. Cache de **streek**
+> waar je wandelt via **⬇ Regio** of per route.
 
 ## Batterijzuinig ontwerp
 

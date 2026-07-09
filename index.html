@@ -36,6 +36,10 @@
     </div>
     <p id="load-status" class="load-status" hidden></p>
 
+    <button id="btn-explore" class="explore-btn">
+      🧭 Nieuwe wandeling <small>— routes in de buurt (geen Komoot nodig)</small>
+    </button>
+
     <div id="route-list" class="route-list" aria-live="polite"></div>
 
     <p id="list-empty" class="empty" hidden>
@@ -68,6 +72,18 @@
       <button id="btn-recenter" class="fab ghost" title="Op route centreren" aria-label="Op route centreren">⤢</button>
       <button id="btn-locate" class="fab" title="Toon mijn locatie (eenmalig)" aria-label="Toon mijn locatie">◎</button>
       <button id="btn-track" class="fab track-off" title="Volg mijn locatie" aria-label="Volg mijn locatie">➤</button>
+    </div>
+
+    <div id="explore-bar" class="explore-bar" hidden>
+      <div id="explore-info" class="explore-info">
+        <strong>Routes in de buurt</strong>
+        <span id="explore-hint">laden…</span>
+      </div>
+      <div class="explore-actions">
+        <button id="explore-search" class="chip" title="Zoek routes in dit kaartbeeld">🔄 Zoek hier</button>
+        <button id="explore-region" class="chip" title="Deze regio offline opslaan">⬇ Regio</button>
+        <button id="explore-follow" class="primary" disabled>Volg</button>
+      </div>
     </div>
 
     <div id="track-hud" class="track-hud" hidden>
@@ -155,7 +171,11 @@
         <li><strong>Komoot.</strong> Plak een tour-URL met <code>share_token</code> om de route in te laden.</li>
         <li><strong>Offline kaart.</strong> Open een route en tik <em>⬇ Offline</em> om de tegels op te slaan.</li>
       </ul>
-      <p class="tiny">Kaartdata © OpenStreetMap-bijdragers. Enkel voor persoonlijk gebruik.</p>
+      <p class="tiny">
+        Kaart & data © OpenStreetMap-bijdragers. Tegels: © CARTO, Esri/Maxar (satelliet),
+        © OpenTopoMap (CC-BY-SA). Wandelknooppunten, horeca en routes uit OpenStreetMap via Overpass.
+        Enkel voor persoonlijk gebruik.
+      </p>
       <div class="sheet-actions">
         <button id="about-close" class="primary">Sluiten</button>
       </div>

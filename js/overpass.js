@@ -68,6 +68,118 @@
     throw lastErr || new Error('Overpass niet bereikbaar');
   }
 
+  // ---------- Bewegwijzerde wandelroutes (lokale gekleurde lussen) ----------
+  const NAMED = {
+    red: '#dc2626', rood: '#dc2626', blue: '#2563eb', blauw: '#2563eb',
+    green: '#16a34a', groen: '#16a34a', yellow: '#eab308', geel: '#eab308',
+    white: '#d1d5db', wit: '#d1d5db', black: '#111827', zwart: '#111827',
+    brown: '#92400e', bruin: '#92400e', orange: '#ea580c', oranje: '#ea580c',
+    purple: '#7c3aed', paars: '#7c3aed', aqua: '#06b6d4', cyan: '#06b6d4',
+    pink: '#db2777', roze: '#db2777', gray: '#6b7280', grey: '#6b7280', grijs: '#6b7280',
+  };
+  const FALLBACK = ['#e11d48', '#2563eb', '#16a34a', '#eab308', '#7c3aed', '#ea580c', '#06b6d4', '#db2777'];
+
+  function colourToHex(c, osmc) {
+    if (c) {
+      const s = String(c).toLowerCase().trim();
+      if (NAMED[s]) return NAMED[s];
+      if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(s)) return s;
+      for (const p of s.split(/[-_ /]+/)) if (NAMED[p]) return NAMED[p];
+    }
+    if (osmc) { const first = String(osmc).split(':')[0]; if (NAMED[first]) return NAMED[first]; }
+    return null;
+  }
+
+  function haversineM(a, b) {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
+    const s = Math.sin(dLat / 2) ** 2 +
+      Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+  }
+  function segLen(seg) { let t = 0; for (let i = 1; i < seg.length; i++) t += haversineM(seg[i - 1], seg[i]); return t; }
+
+  // Rijg de losse ways aan elkaar tot één (zo goed mogelijk geordend) pad.
+  function stitch(segs) {
+    if (!segs.length) return [];
+    const used = new Array(segs.length).fill(false);
+    let si = 0;
+    for (let i = 1; i < segs.length; i++) if (segs[i].length > segs[si].length) si = i;
+    let chain = segs[si].slice(); used[si] = true;
+    const near = (a, b) => Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
+    let ext = true;
+    while (ext) {
+      ext = false;
+      for (let i = 0; i < segs.length; i++) {
+        if (used[i]) continue;
+        const s = segs[i], head = chain[0], tail = chain[chain.length - 1];
+        if (near(tail, s[0])) { chain = chain.concat(s.slice(1)); used[i] = true; ext = true; }
+        else if (near(tail, s[s.length - 1])) { chain = chain.concat(s.slice(0, -1).reverse()); used[i] = true; ext = true; }
+        else if (near(head, s[s.length - 1])) { chain = s.slice(0, -1).concat(chain); used[i] = true; ext = true; }
+        else if (near(head, s[0])) { chain = s.slice(1).reverse().concat(chain); used[i] = true; ext = true; }
+      }
+    }
+    return chain;
+  }
+
+  function parseRoutes(data) {
+    const routes = [];
+    for (const e of data.elements || []) {
+      if (e.type !== 'relation') continue;
+      const t = e.tags || {};
+      const segs = [];
+      for (const m of e.members || []) {
+        if (m.type === 'way' && m.geometry && m.geometry.length > 1) {
+          segs.push(m.geometry.map((g) => [+g.lat.toFixed(6), +g.lon.toFixed(6)]));
+        }
+      }
+      if (!segs.length) continue;
+      const distance = Math.round(segs.reduce((a, s) => a + segLen(s), 0));
+      const coords = stitch(segs);
+      routes.push({
+        id: 'osm-' + e.id, source: 'osm', relId: e.id,
+        name: (t.name || t.ref || 'Wandelroute').slice(0, 60),
+        ref: t.ref || '',
+        colour: colourToHex(t.colour || t.color, t['osmc:symbol']),
+        distance,
+        segments: segs,
+        coords: coords.length ? coords : segs[0],
+      });
+    }
+    // Kortste (lokale lussen) eerst.
+    routes.sort((a, b) => a.distance - b.distance);
+    return routes;
+  }
+
+  /** Haal bewegwijzerde lokale wandelroutes (lwn) op binnen bounds. */
+  async function fetchRoutes(bounds) {
+    const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
+    const q = `[out:json][timeout:90];rel["route"~"^(hiking|foot|walking)$"]["network"="lwn"](${bbox});out geom;`;
+    let lastErr = null;
+    for (const ep of ENDPOINTS) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 35000);
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body: 'data=' + encodeURIComponent(q),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
+        return parseRoutes(await res.json());
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('Overpass niet bereikbaar');
+  }
+
+  function boundsFromCenter(lat, lng, radiusM) {
+    const dLat = radiusM / 111320;
+    const dLng = radiusM / (111320 * Math.cos((lat * Math.PI) / 180));
+    return { minLat: lat - dLat, minLng: lng - dLng, maxLat: lat + dLat, maxLng: lng + dLng };
+  }
+
   function boundsFromCoords(coords, marginDeg) {
     const m = marginDeg == null ? 0.012 : marginDeg;
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -80,5 +192,5 @@
     return { minLat: minLat - m, minLng: minLng - m, maxLat: maxLat + m, maxLng: maxLng + m };
   }
 
-  global.Overpass = { fetchOverlays, boundsFromCoords };
+  global.Overpass = { fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK };
 })(window);

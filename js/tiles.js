@@ -111,10 +111,40 @@
     return { count: n, mb: +((n * bm.avgKB) / 1024).toFixed(1) };
   }
 
+  // Alle tegels binnen een rechthoek (regio) — voor "sla deze regio offline op".
+  function planBBox(bounds, detail, basemap) {
+    const bm = typeof basemap === 'string' ? getBasemap(basemap) : (basemap || getBasemap());
+    const zooms = (DETAIL[detail] || DETAIL.normal).filter((z) => z <= bm.maxNativeZoom);
+    const tiles = [];
+    for (const z of zooms) {
+      const xa = lng2tileX(bounds.minLng, z), xb = lng2tileX(bounds.maxLng, z);
+      const ya = lat2tileY(bounds.maxLat, z), yb = lat2tileY(bounds.minLat, z);
+      for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x++) {
+        for (let y = Math.min(ya, yb); y <= Math.max(ya, yb); y++) tiles.push({ x, y, z });
+      }
+    }
+    return tiles;
+  }
+  function estimateBBox(bounds, detail, basemap) {
+    const bm = typeof basemap === 'string' ? getBasemap(basemap) : (basemap || getBasemap());
+    const n = planBBox(bounds, detail, bm).length;
+    return { count: n, mb: +((n * bm.avgKB) / 1024).toFixed(1) };
+  }
+
   /** Download tegels van de gekozen basemap met beperkte gelijktijdigheid. */
   async function download(coords, detail, basemap, onProgress, signal) {
     const bm = typeof basemap === 'string' ? getBasemap(basemap) : (basemap || getBasemap());
     const tiles = planTiles(coords, detail, bm);
+    return downloadTiles(tiles, bm, onProgress, signal);
+  }
+
+  /** Download een rechthoekige regio. */
+  async function downloadBBox(bounds, detail, basemap, onProgress, signal) {
+    const bm = typeof basemap === 'string' ? getBasemap(basemap) : (basemap || getBasemap());
+    return downloadTiles(planBBox(bounds, detail, bm), bm, onProgress, signal);
+  }
+
+  async function downloadTiles(tiles, bm, onProgress, signal) {
     const cache = await caches.open(CACHE_NAME);
     let done = 0, ok = 0;
     const total = tiles.length;
@@ -153,5 +183,6 @@
   global.Tiles = {
     CACHE_NAME, BASEMAPS, DEFAULT_BASEMAP, ALL_HOSTS,
     getBasemap, urlFor, planTiles, estimate, download, cacheSize, clearAll, DETAIL,
+    planBBox, estimateBBox, downloadBBox,
   };
 })(window);

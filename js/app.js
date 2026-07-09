@@ -20,6 +20,7 @@
       this._wire();
       await this.seedDefault();
       await this.refreshList();
+      try { this._regions = await DB.allRegions(); } catch (_) { this._regions = []; }
       this._handleSharedUrl();
     },
 
@@ -112,11 +113,16 @@
           route.tilesCached = existing.tilesCached;
           route.tileDetail = existing.tileDetail;
         }
+        const existed = !!existing;
         await DB.put(route);
         input.value = '';
-        this.setLoadStatus(`“${route.name}” ingeladen ✓`, 'ok');
+        this.setLoadStatus('', '');
         await this.refreshList();
-        setTimeout(() => this.setLoadStatus('', ''), 3500);
+        this.toast(existed
+          ? `“${route.name}” stond er al — bijgewerkt en geopend`
+          : `“${route.name}” ingeladen`);
+        // Toon de route meteen — zo doet “Laden” altijd zichtbaar iets.
+        this.openRoute(route.id);
       } catch (e) {
         this.setLoadStatus('Mislukt: ' + (e.message || 'kon route niet laden') +
           '. Controleer de URL (met share_token) en je internetverbinding.', 'error');
@@ -181,6 +187,116 @@
       } catch (_) { /* offline of Overpass onbereikbaar: stil overslaan */ }
     },
 
+    // ---------- Verken: nieuwe wandeling (routes in de buurt) ----------
+    startExplore() {
+      this._exploreActive = true;
+      _current = null;
+      this._selectedExplore = null;
+      $('map-route-name').textContent = 'Nieuwe wandeling';
+      $('map-route-meta').textContent = 'routes in de buurt';
+      this.goto('map');
+      this._setExploreChrome(true);
+      MapView.invalidate();
+      MapView.enterExplore();
+      $('explore-bar').hidden = false;
+      $('explore-follow').disabled = true;
+      $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
+      $('explore-hint').textContent = 'locatie bepalen…';
+      MapView.locateOnce(
+        () => this._exploreFetch(),
+        () => {
+          MapView.map.setView(this._lastCenter || [51.23, 5.35], 13);
+          $('explore-hint').textContent = 'geen GPS — verschuif de kaart en tik “Zoek hier”';
+          this._exploreFetch();
+        }
+      );
+    },
+
+    _setExploreChrome(on) {
+      $('btn-track').hidden = on;
+      $('btn-tiles').hidden = on;
+      $('offroute-banner').hidden = true;
+    },
+
+    async _exploreFetch() {
+      const b = MapView.map.getBounds();
+      const bounds = { minLat: b.getSouth(), minLng: b.getWest(), maxLat: b.getNorth(), maxLng: b.getEast() };
+      this._lastCenter = [b.getCenter().lat, b.getCenter().lng];
+      $('explore-hint').textContent = 'routes ophalen…';
+      $('explore-search').disabled = true;
+      try {
+        let routes;
+        if (navigator.onLine) {
+          routes = await Overpass.fetchRoutes(bounds);
+        } else {
+          routes = this._routesFromRegions(bounds);
+        }
+        this._exploreRoutes = routes;
+        this._exploreBounds = bounds;
+        MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
+        $('explore-hint').textContent = routes.length
+          ? `${routes.length} route${routes.length > 1 ? 's' : ''} — tik er één aan${!navigator.onLine ? ' (offline)' : ''}`
+          : (navigator.onLine ? 'geen bewegwijzerde lussen hier gevonden' : 'geen offline routes voor dit gebied');
+      } catch (e) {
+        $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
+      } finally {
+        $('explore-search').disabled = false;
+      }
+    },
+
+    _onExplorePick(rt) {
+      this._selectedExplore = rt;
+      const strong = $('explore-info').querySelector('strong');
+      strong.innerHTML = `<span class="swatch" style="background:${rt._col}"></span>` +
+        escapeHtmlApp(rt.name);
+      $('explore-hint').textContent = `${formatKm(rt.distance)}${rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : ''} — tik “Volg”`;
+      $('explore-follow').disabled = false;
+    },
+
+    onExploreLocate(routesOn) {
+      if (!this._exploreActive) return;
+      if (routesOn && routesOn.length) {
+        const names = routesOn.map((r) => r.name).slice(0, 3).join(', ');
+        this.toast('Je staat op: ' + names);
+      }
+    },
+
+    async followSelected() {
+      const rt = this._selectedExplore;
+      if (!rt) return;
+      const route = {
+        id: rt.id,
+        source: 'osm',
+        name: rt.name,
+        colour: rt._col,
+        sport: 'hike',
+        coords: rt.coords.map((c) => [c[0], c[1], 0]),
+        distance: rt.distance,
+        elevationUp: 0, elevationDown: 0, duration: 0,
+        importedAt: new Date().toISOString(),
+      };
+      await DB.put(route);
+      this._exploreActive = false;
+      this._setExploreChrome(false);
+      $('explore-bar').hidden = true;
+      MapView.clearExplore();
+      await this.refreshList();
+      this.openRoute(route.id);
+    },
+
+    _routesFromRegions(bounds) {
+      // Offline: neem routes uit opgeslagen regio's die dit gebied overlappen.
+      const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
+      let best = [];
+      for (const reg of this._regions || []) {
+        const rb = reg.bounds;
+        if (cx >= rb.minLat && cx <= rb.maxLat && cy >= rb.minLng && cy <= rb.maxLng) {
+          best = best.concat(reg.routes || []);
+        }
+      }
+      return best;
+    },
+
     // ---------- Hernoem / verwijder menu ----------
     openMenu(route) {
       _menuRoute = route;
@@ -211,8 +327,10 @@
     },
 
     // ---------- Offline tegels ----------
-    openTileSheet() {
-      if (!_current) return;
+    openTileSheet(mode) {
+      this._tileMode = mode === 'region' ? 'region' : 'route';
+      if (this._tileMode === 'route' && !_current) return;
+      if (this._tileMode === 'region' && !this._exploreBounds) return;
       this._updateTileEstimate();
       $('tile-progress').hidden = true;
       $('tile-progress-text').textContent = '0%';
@@ -224,38 +342,43 @@
     _updateTileEstimate() {
       const detail = $('tile-detail').value;
       const bm = Tiles.getBasemap(this.prefs.basemap);
-      const est = Tiles.estimate(_current.coords, detail, bm);
+      const est = this._tileMode === 'region'
+        ? Tiles.estimateBBox(this._exploreBounds, detail, bm)
+        : Tiles.estimate(_current.coords, detail, bm);
+      const what = this._tileMode === 'region' ? 'Regio' : 'Route';
       $('tile-estimate').textContent =
-        `Kaart “${bm.name}” · ± ${est.count} tegels · ongeveer ${est.mb} MB. Doe dit met wifi.`;
+        `${what} · kaart “${bm.name}” · ± ${est.count} tegels · ongeveer ${est.mb} MB. Doe dit met wifi.`;
     },
     async startTileDownload() {
-      if (!_current) return;
       const detail = $('tile-detail').value;
       const bm = Tiles.getBasemap(this.prefs.basemap);
+      const region = this._tileMode === 'region';
+      if (region && !this._exploreBounds) return;
+      if (!region && !_current) return;
       $('tile-progress').hidden = false;
       $('tile-start').disabled = true;
       $('tile-cancel').textContent = 'Stop';
       _tileAbort = new AbortController();
+      const onProg = (done, total) => {
+        const pct = Math.round((done / total) * 100);
+        $('tile-bar-fill').style.width = pct + '%';
+        $('tile-progress-text').textContent = `${pct}% (${done}/${total})`;
+      };
       try {
-        const result = await Tiles.download(
-          _current.coords, detail, bm,
-          (done, total) => {
-            const pct = Math.round((done / total) * 100);
-            $('tile-bar-fill').style.width = pct + '%';
-            $('tile-progress-text').textContent = `${pct}% (${done}/${total})`;
-          },
-          _tileAbort.signal
-        );
-        if (!result.cancelled) {
+        const result = region
+          ? await Tiles.downloadBBox(this._exploreBounds, detail, bm, onProg, _tileAbort.signal)
+          : await Tiles.download(_current.coords, detail, bm, onProg, _tileAbort.signal);
+        if (result.cancelled) { this.toast('Download gestopt'); return; }
+        if (region) {
+          await this._saveRegion(detail, bm, result.ok);
+        } else {
           _current.tilesCached = true;
           _current.tileDetail = detail;
           await DB.put(_current);
           await this.refreshList();
           this.toast(`Kaart offline opgeslagen (${result.ok} tegels)`);
-          this._hide('tile-overlay');
-        } else {
-          this.toast('Download gestopt');
         }
+        this._hide('tile-overlay');
       } catch (e) {
         this.toast('Download mislukt');
       } finally {
@@ -263,6 +386,29 @@
         $('tile-cancel').textContent = 'Sluiten';
         $('tile-start').disabled = false;
       }
+    },
+
+    async _saveRegion(detail, bm, okTiles) {
+      const bounds = this._exploreBounds;
+      let horeca = [], nodes = [];
+      if (navigator.onLine) {
+        try { ({ nodes, horeca } = await Overpass.fetchOverlays(bounds)); } catch (_) {}
+      }
+      const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
+      const region = {
+        id: 'region-' + Math.round(cx * 1000) + '_' + Math.round(cy * 1000),
+        name: 'Regio ' + cx.toFixed(3) + ', ' + cy.toFixed(3),
+        bounds,
+        routes: (this._exploreRoutes || []).map((r) => ({
+          id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col,
+          distance: r.distance, segments: r.segments, coords: r.coords,
+        })),
+        horeca, nodes, basemap: bm.key, detail,
+        savedAt: new Date().toISOString(),
+      };
+      await DB.putRegion(region);
+      this._regions = await DB.allRegions();
+      this.toast(`Regio offline: ${okTiles} tegels, ${region.routes.length} routes`);
     },
     cancelTile() {
       if (_tileAbort) { _tileAbort.abort(); return; }
@@ -365,6 +511,12 @@
       $('screen-list').classList.toggle('is-active', screen === 'list');
       $('screen-map').classList.toggle('is-active', screen === 'map');
       if (screen === 'list') {
+        if (this._exploreActive) {
+          this._exploreActive = false;
+          MapView.clearExplore();
+          this._setExploreChrome(false);
+          $('explore-bar').hidden = true;
+        }
         MapView.clearLocation();
         _current = null;
       }
@@ -409,7 +561,12 @@
       $('ov-nodes').addEventListener('change', (e) => this.setOverlay('nodes', e.target.checked));
       $('ov-horeca').addEventListener('change', (e) => this.setOverlay('horeca', e.target.checked));
 
-      $('btn-tiles').addEventListener('click', () => this.openTileSheet());
+      $('btn-explore').addEventListener('click', () => this.startExplore());
+      $('explore-search').addEventListener('click', () => this._exploreFetch());
+      $('explore-region').addEventListener('click', () => this.openTileSheet('region'));
+      $('explore-follow').addEventListener('click', () => this.followSelected());
+
+      $('btn-tiles').addEventListener('click', () => this.openTileSheet('route'));
       $('tile-detail').addEventListener('change', () => this._updateTileEstimate());
       $('tile-start').addEventListener('click', () => this.startTileDownload());
       $('tile-cancel').addEventListener('click', () => this.cancelTile());
@@ -439,6 +596,10 @@
   }
   function km(m) { return (m / 1000).toFixed(1).replace('.', ',') + ' km'; }
   function kmNum(m) { return (m / 1000).toFixed(1).replace('.', ','); }
+  function escapeHtmlApp(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
   function sportLabel(s) {
     const map = { hike: 'Wandelen', touringbicycle: 'Fietsen', mtb: 'MTB', jogging: 'Joggen', racebike: 'Racefiets' };
     return map[s] || 'Route';
