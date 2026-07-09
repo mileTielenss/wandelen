@@ -18,9 +18,11 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Kaart** met de volledige route om te valideren dat je nog op het juiste pad zit.
 - **Locatie in drie standen** — bewust gescheiden om batterij te sparen:
   1. **Kaart** (standaard): enkel de route, **GPS uit**.
-  2. **◎ Toon mijn locatie**: één enkele GPS-meting, zet een stip op de kaart. GPS gaat daarna weer uit.
-  3. **➤ Volg mijn locatie** (tracking): aparte, expliciete stand met live positie en een
-     melding hoever je van de route zit. Stopt zodra je op **Stop** tikt.
+  2. **◎ Toon mijn locatie**: één verse GPS-meting, zet een stip op de kaart. GPS gaat daarna weer uit.
+  3. **➤ Volg mijn locatie** (tracking): aparte, expliciete stand met live positie. Stopt zodra je op **Stop** tikt.
+- **Hoe ver nog?** Zodra je locatie bekend is, toont de balk bovenaan je **voortgang
+  langs de route**: bv. *km 8,4 van 18,8 · nog 10,4 km · 45%*. Ben je van het pad af,
+  dan zie je hoever (en bij welk punt je het dichtst zit).
 - **Volledig offline**: de app-code én de route worden lokaal opgeslagen. Sla ook de
   **kaarttegels** rond een route op via **⬇ Offline** (doe dit één keer met wifi), zodat
   de kaart zonder internet werkt.

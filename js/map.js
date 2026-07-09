@@ -61,6 +61,13 @@
       }).addTo(this.map).bindTooltip('Einde', { direction: 'top' });
 
       this._latlngs = latlngs;
+      // Cumulatieve afstand (meters) vanaf de start, per punt — voor "hoe ver nog".
+      this._cum = new Array(latlngs.length);
+      this._cum[0] = 0;
+      for (let i = 1; i < latlngs.length; i++) {
+        this._cum[i] = this._cum[i - 1] + haversineM(latlngs[i - 1], latlngs[i]);
+      }
+      this._total = this._cum[latlngs.length - 1] || route.distance || 0;
       this.recenter();
     },
 
@@ -80,7 +87,8 @@
           this.map.setView(ll, Math.max(this.map.getZoom(), 15), { animate: true });
         },
         (err) => App.toast('Locatie mislukt: ' + friendlyGeoError(err)),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+        // Verse meting bij elke tik (geen oude gecachte positie) — dat is net de bedoeling.
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     },
 
@@ -146,9 +154,15 @@
           this.accCircle.setLatLng(ll).setRadius(acc);
         }
       }
-      // Afstand tot route berekenen
-      const d = nearestDistanceMeters(pos.coords.latitude, pos.coords.longitude, this._latlngs);
-      App.setOffRoute({ meters: d, off: d > OFF_ROUTE_M, accuracy: acc });
+      // Afstand tot route + voortgang langs de route ("hoe ver nog")
+      const p = projectOnRoute(pos.coords.latitude, pos.coords.longitude, this._latlngs, this._cum);
+      App.setOffRoute({
+        meters: p.dist,
+        off: p.dist > OFF_ROUTE_M,
+        accuracy: acc,
+        alongM: p.alongM,
+        totalM: this._total,
+      });
     },
 
     _setMode(mode) {
@@ -173,17 +187,33 @@
   };
 
   // ---------- Geometrie ----------
-  function nearestDistanceMeters(lat, lng, latlngs) {
-    if (!latlngs || latlngs.length < 2) return Infinity;
-    let best = Infinity;
+  /** Projecteer een punt op de route. Geeft de afstand tot de route (m) en
+      hoeveel meter langs de route je zit (vanaf de start). */
+  function projectOnRoute(lat, lng, latlngs, cum) {
+    if (!latlngs || latlngs.length < 2) return { dist: Infinity, alongM: 0 };
+    let best = { dist: Infinity, alongM: 0 };
     for (let i = 1; i < latlngs.length; i++) {
-      const d = pointToSegmentM(lat, lng, latlngs[i - 1], latlngs[i]);
-      if (d < best) best = d;
+      const r = segProject(lat, lng, latlngs[i - 1], latlngs[i]);
+      if (r.dist < best.dist) {
+        const segLen = (cum[i] - cum[i - 1]) || 0;
+        best = { dist: r.dist, alongM: cum[i - 1] + r.t * segLen };
+      }
     }
     return best;
   }
 
-  function pointToSegmentM(lat, lng, a, b) {
+  function nearestDistanceMeters(lat, lng, latlngs) {
+    return projectOnRoute(lat, lng, latlngs, buildCum(latlngs)).dist;
+  }
+
+  function buildCum(latlngs) {
+    const cum = [0];
+    for (let i = 1; i < latlngs.length; i++) cum[i] = cum[i - 1] + haversineM(latlngs[i - 1], latlngs[i]);
+    return cum;
+  }
+
+  /** Afstand van punt tot segment (m) + fractie t (0..1) van de projectie op het segment. */
+  function segProject(lat, lng, a, b) {
     // Lokale equirectangular projectie in meters
     const R = 6371000;
     const latRef = (a[0] + b[0]) / 2;
@@ -195,7 +225,15 @@
     let t = len2 ? (px * bx + py * by) / len2 : 0;
     t = Math.max(0, Math.min(1, t));
     const dx = px - bx * t, dy = py - by * t;
-    return Math.sqrt(dx * dx + dy * dy);
+    return { dist: Math.sqrt(dx * dx + dy * dy), t };
+  }
+
+  function haversineM(a, b) {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
+    const s = Math.sin(dLat / 2) ** 2 +
+      Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
   }
 
   function friendlyGeoError(err) {

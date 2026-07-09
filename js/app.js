@@ -264,13 +264,32 @@
       if (!info) { banner.hidden = true; return; }
       banner.hidden = false;
       const m = Math.round(info.meters);
+      const total = info.totalM || 0;
+      const along = Math.max(0, Math.min(info.alongM || 0, total));
+      const remain = Math.max(0, total - along);
+      const pct = total ? Math.round((along / total) * 100) : 0;
+      const acc = info.accuracy > 30 ? ` · GPS ±${Math.round(info.accuracy)}m` : '';
+
+      // Voortgangsregel: "km 10,2 van 18,8 · nog 8,6 km · 54%"
+      const prog = total
+        ? `km ${kmNum(along)} van ${kmNum(total)} · nog ${km(remain)} · ${pct}%`
+        : '';
+
       if (info.off) {
         banner.className = 'offroute';
-        banner.textContent = `⚠ ${m} m van de route` +
-          (info.accuracy > 30 ? ` (GPS ±${Math.round(info.accuracy)}m)` : '');
+        banner.innerHTML =
+          `<span class="ln1">⚠ ${m} m van de route${acc}</span>` +
+          (prog ? `<span class="ln2">dichtstbij ${prog}</span>` : '');
       } else {
         banner.className = 'offroute on-route';
-        banner.textContent = `✓ Op de route (${m} m)`;
+        banner.innerHTML =
+          `<span class="ln1">✓ Op de route${acc}</span>` +
+          (prog ? `<span class="ln2">${prog}</span>` : '');
+      }
+
+      // Tijdens tracking ook in de HUD tonen
+      if (MapView.mode === 'tracking' && total) {
+        $('track-text').textContent = `nog ${km(remain)} · ${pct}%`;
       }
     },
 
@@ -343,6 +362,8 @@
     if (!m) return '– km';
     return (m / 1000).toFixed(1).replace('.', ',') + ' km';
   }
+  function km(m) { return (m / 1000).toFixed(1).replace('.', ',') + ' km'; }
+  function kmNum(m) { return (m / 1000).toFixed(1).replace('.', ','); }
   function sportLabel(s) {
     const map = { hike: 'Wandelen', touringbicycle: 'Fietsen', mtb: 'MTB', jogging: 'Joggen', racebike: 'Racefiets' };
     return map[s] || 'Route';
