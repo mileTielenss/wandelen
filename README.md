@@ -36,9 +36,12 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
   Met **⬇ Regio** sla je een heel gebied offline op (kaarttegels + alle routes + horeca),
   zodat je ook zonder internet nieuwe wandelingen kan kiezen.
-- **Volledig offline**: de app-code, de route, de knooppunten en horeca worden lokaal
-  opgeslagen. Sla ook de **kaarttegels** rond een route op via **⬇ Offline** (doe dit één
-  keer met wifi), zodat ook de onderkaart zonder internet werkt.
+- **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
+  de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
+  knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
+- **Status-indicators**: bovenaan zie je altijd of je **internet** hebt en wat de
+  **GPS** doet (uit / zoekt… / ok / volgt / geweigerd). Tracking claimt pas "volgt"
+  als er echt een GPS-fix is.
 
 > Kaarttegels voor een héél land (bv. heel België) zijn bewust niet mogelijk: dat zijn
 > tientallen GB en de tegel-providers staan bulk-downloads niet toe. Cache de **streek**
@@ -80,8 +83,8 @@ python3 -m http.server 8080
 
 1. Open de tour in Komoot en deel ze (**Delen → Link kopiëren**) zodat de URL een
    `share_token` bevat.
-2. Plak de URL in de balk op het startscherm en tik **Laden**.
-3. Open de route en tik **⬇ Offline** om de kaart lokaal te bewaren.
+2. Plak de URL in de balk op het startscherm en tik **Laden** — de route opent meteen
+   en de kaart wordt automatisch offline opgeslagen (met internet).
 
 > Je kan de app ook openen met `?url=<komoot-url>` om meteen te importeren.
 

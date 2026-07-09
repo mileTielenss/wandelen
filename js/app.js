@@ -18,10 +18,42 @@
         showHoreca: this.prefs.showHoreca,
       });
       this._wire();
+      this.updateStatus();
       await this.seedDefault();
       await this.refreshList();
       try { this._regions = await DB.allRegions(); } catch (_) { this._regions = []; }
       this._handleSharedUrl();
+    },
+
+    // ---------- Status: internet + GPS ----------
+    updateStatus() {
+      const online = navigator.onLine;
+      const gps = MapView.gpsState || 'off';
+      const tracking = MapView.mode === 'tracking';
+      const gpsLabel = {
+        off: 'gps uit',
+        searching: 'gps zoekt…',
+        fix: tracking ? 'gps volgt' : 'gps ok',
+        denied: 'gps geweigerd',
+      }[gps] || 'gps uit';
+      const gpsDot = {
+        off: '',
+        searching: 'mid pulse',
+        fix: 'ok' + (tracking ? ' pulse' : ''),
+        denied: 'bad',
+      }[gps] || '';
+      const tile = this._tilePct != null
+        ? `<span class="stat"><span class="sdot mid pulse"></span>kaart ⬇ ${this._tilePct}%</span>`
+        : '';
+      const html =
+        `<span class="stat"><span class="sdot ${online ? 'ok' : 'bad'}"></span>${online ? 'internet' : 'offline'}</span>` +
+        `<span class="stat"><span class="sdot ${gpsDot}"></span>${gpsLabel}</span>` + tile;
+      const a = $('statusbar-list'), b = $('statusbar-map');
+      if (a) a.innerHTML = html;
+      if (b) b.innerHTML = html;
+      // Eerlijke HUD-tekst: geen "live tracking" claimen zonder echte fix.
+      if (tracking && gps === 'searching') $('track-text').textContent = 'GPS-signaal zoeken…';
+      if (tracking && gps === 'denied') $('track-text').textContent = 'GPS geweigerd';
     },
 
     _loadPrefs() {
@@ -166,6 +198,39 @@
       $('offroute-banner').hidden = true;
       this._resetLocButtons();
       this.maybeFetchOverlays(r);
+      this.autoCacheTiles(r);
+    },
+
+    // Kaarttegels automatisch offline halen (hoogste detail) zodra er internet is.
+    async autoCacheTiles(route) {
+      if (!route || !navigator.onLine || this._tileJob) return;
+      const bm = Tiles.getBasemap(this.prefs.basemap);
+      const done = route.tileMaps || [];
+      if (done.includes(bm.key)) return;
+      this._tileJob = route.id + ':' + bm.key;
+      this._tileAbortAuto = new AbortController();
+      try {
+        const result = await Tiles.download(
+          route.coords, 'fine', bm,
+          (d, t) => { this._tilePct = Math.round((d / t) * 100); this.updateStatus(); },
+          this._tileAbortAuto.signal
+        );
+        if (!result.cancelled && result.ok > 0) {
+          route.tilesCached = true;
+          route.tileDetail = 'fine';
+          route.tileMaps = [...new Set([...done, bm.key])];
+          await DB.put(route);
+          if (_current && _current.id === route.id) _current = route;
+          this.refreshList();
+          this.toast('Kaart offline opgeslagen ✓');
+        }
+      } catch (_) { /* stil: volgende keer opnieuw proberen */ }
+      finally {
+        this._tileJob = null;
+        this._tilePct = null;
+        this._tileAbortAuto = null;
+        this.updateStatus();
+      }
     },
 
     // Knooppunten + horeca ophalen (eenmalig, indien online) en offline bewaren.
@@ -201,46 +266,101 @@
       $('explore-bar').hidden = false;
       $('explore-follow').disabled = true;
       $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
-      $('explore-hint').textContent = 'locatie bepalen…';
+
+      // Toon meteen het laatste zoekresultaat (cache) — geen wachten op netwerk.
+      const cache = this._exploreCache();
+      if (cache) {
+        this._exploreRoutes = cache.routes;
+        this._exploreBounds = cache.bounds;
+        MapView.renderExplore(cache.routes, (rt) => this._onExplorePick(rt));
+        $('explore-hint').textContent = `${cache.routes.length} routes (vorige zoekactie) — locatie bepalen…`;
+      } else {
+        $('explore-hint').textContent = 'locatie bepalen…';
+      }
+
+      // Grove/recente GPS-fix volstaat hier en is veel sneller dan een verse precisiefix.
       MapView.locateOnce(
         () => this._exploreFetch(),
         () => {
-          MapView.map.setView(this._lastCenter || [51.23, 5.35], 13);
-          $('explore-hint').textContent = 'geen GPS — verschuif de kaart en tik “Zoek hier”';
+          if (!cache) {
+            MapView.map.setView(this._lastCenter || [51.23, 5.35], 13);
+            $('explore-hint').textContent = 'geen GPS — verschuif de kaart en tik “Zoek hier”';
+          }
           this._exploreFetch();
-        }
+        },
+        { fast: true }
       );
+    },
+
+    // Laatste verkenning uit de regio-opslag (max 7 dagen oud).
+    _exploreCache() {
+      const reg = (this._regions || []).find((r) => r.id === 'explore-cache');
+      if (!reg || !reg.routes || !reg.routes.length) return null;
+      const age = Date.now() - new Date(reg.savedAt || 0).getTime();
+      if (age > 7 * 24 * 3600 * 1000) return null;
+      return reg;
     },
 
     _setExploreChrome(on) {
       $('btn-track').hidden = on;
-      $('btn-tiles').hidden = on;
       $('offroute-banner').hidden = true;
     },
 
     async _exploreFetch() {
       const b = MapView.map.getBounds();
-      const bounds = { minLat: b.getSouth(), minLng: b.getWest(), maxLat: b.getNorth(), maxLng: b.getEast() };
-      this._lastCenter = [b.getCenter().lat, b.getCenter().lng];
+      const c = b.getCenter();
+      this._lastCenter = [c.lat, c.lng];
+      // Begrens het zoekgebied: een uitgezoomde kaart zou anders een gigantische
+      // (trage) query opleveren. Max ~18 km hoog; anders 9 km rond het midden.
+      let bounds = { minLat: b.getSouth(), minLng: b.getWest(), maxLat: b.getNorth(), maxLng: b.getEast() };
+      const MAX_SPAN = 0.16;
+      if ((bounds.maxLat - bounds.minLat) > MAX_SPAN || (bounds.maxLng - bounds.minLng) > MAX_SPAN * 1.7) {
+        bounds = Overpass.boundsFromCenter(c.lat, c.lng, 9000);
+      }
       $('explore-hint').textContent = 'routes ophalen…';
       $('explore-search').disabled = true;
+      const mySeq = (this._exploreSeq = (this._exploreSeq || 0) + 1);
       try {
-        let routes;
+        let routes, fromCache = false;
         if (navigator.onLine) {
           routes = await Overpass.fetchRoutes(bounds);
         } else {
           routes = this._routesFromRegions(bounds);
+          fromCache = true;
         }
+        // Verouderd antwoord (gebruiker zocht ondertussen opnieuw)? Negeren.
+        if (mySeq !== this._exploreSeq || !this._exploreActive) return;
         this._exploreRoutes = routes;
         this._exploreBounds = bounds;
-        MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
-        $('explore-hint').textContent = routes.length
-          ? `${routes.length} route${routes.length > 1 ? 's' : ''} — tik er één aan${!navigator.onLine ? ' (offline)' : ''}`
-          : (navigator.onLine ? 'geen bewegwijzerde lussen hier gevonden' : 'geen offline routes voor dit gebied');
+        // Niet hertekenen over een gemaakte keuze heen.
+        if (!this._selectedExplore) {
+          MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
+          $('explore-hint').textContent = routes.length
+            ? `${routes.length} route${routes.length > 1 ? 's' : ''} — tik er één aan${fromCache ? ' (offline)' : ''}`
+            : (fromCache ? 'geen offline routes voor dit gebied' : 'geen bewegwijzerde lussen hier gevonden');
+        }
+        // Bewaar als cache zodat de volgende keer meteen iets te zien is.
+        if (!fromCache && routes.length) {
+          const region = {
+            id: 'explore-cache', name: '(auto) laatste verkenning',
+            bounds, routes, savedAt: new Date().toISOString(),
+          };
+          DB.putRegion(region).then(async () => { this._regions = await DB.allRegions(); }).catch(() => {});
+        }
       } catch (e) {
-        $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
+        if (mySeq !== this._exploreSeq || !this._exploreActive) return;
+        // Netwerk faalde: val terug op offline regio's/cache.
+        const fallback = this._routesFromRegions(bounds);
+        if (fallback.length && !this._selectedExplore) {
+          this._exploreRoutes = fallback;
+          this._exploreBounds = bounds;
+          MapView.renderExplore(fallback, (rt) => this._onExplorePick(rt));
+          $('explore-hint').textContent = `${fallback.length} routes (offline cache) — tik er één aan`;
+        } else if (!this._selectedExplore) {
+          $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
+        }
       } finally {
-        $('explore-search').disabled = false;
+        if (mySeq === this._exploreSeq) $('explore-search').disabled = false;
       }
     },
 
@@ -294,7 +414,9 @@
           best = best.concat(reg.routes || []);
         }
       }
-      return best;
+      // Dubbelen eruit (dezelfde route kan in meerdere regio's/cache zitten).
+      const seen = new Set();
+      return best.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
     },
 
     // ---------- Hernoem / verwijder menu ----------
@@ -434,6 +556,8 @@
       this.prefs.basemap = key;
       this._savePrefs();
       MapView.setBasemap(key);
+      // Nieuwe kaartlaag → ook die automatisch offline halen voor de open route.
+      if (_current) this.autoCacheTiles(_current);
     },
     setOverlay(kind, on) {
       if (kind === 'nodes') this.prefs.showNodes = on;
@@ -562,11 +686,16 @@
       $('ov-horeca').addEventListener('change', (e) => this.setOverlay('horeca', e.target.checked));
 
       $('btn-explore').addEventListener('click', () => this.startExplore());
-      $('explore-search').addEventListener('click', () => this._exploreFetch());
+      $('explore-search').addEventListener('click', () => {
+        // Expliciet opnieuw zoeken: wis de vorige keuze zodat het nieuwe resultaat telt.
+        this._selectedExplore = null;
+        $('explore-follow').disabled = true;
+        $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
+        this._exploreFetch();
+      });
       $('explore-region').addEventListener('click', () => this.openTileSheet('region'));
       $('explore-follow').addEventListener('click', () => this.followSelected());
 
-      $('btn-tiles').addEventListener('click', () => this.openTileSheet('route'));
       $('tile-detail').addEventListener('change', () => this._updateTileEstimate());
       $('tile-start').addEventListener('click', () => this.startTileDownload());
       $('tile-cancel').addEventListener('click', () => this.cancelTile());
@@ -580,11 +709,16 @@
         $(id).addEventListener('click', (e) => { if (e.target.id === id) this._hide(id); });
       }
 
+      // Internet-status live bijhouden
+      window.addEventListener('online', () => this.updateStatus());
+      window.addEventListener('offline', () => this.updateStatus());
+
       // Scherm-wakelock opnieuw aanvragen na terugkeer (indien actief gewenst)
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && $('chk-awake').checked) {
           MapView.requestWake();
         }
+        this.updateStatus();
       });
     },
   };

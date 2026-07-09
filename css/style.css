@@ -67,18 +67,41 @@ button[disabled] { opacity: .55; pointer-events: none; }
 .load-status.error { color: #fca5a5; }
 .load-status.ok { color: var(--accent); }
 
-.explore-btn {
-  margin: 2px 16px 10px; padding: 14px 16px; border-radius: 14px;
-  background: linear-gradient(135deg, #0e7490, #155e48); color: #fff; text-align: left;
-  font-size: 16px; font-weight: 600; border: 1px solid var(--line);
+/* ---------- Startscherm: acties ---------- */
+.actions { padding: 0 16px; }
+.section-title {
+  margin: 6px 2px 8px; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
 }
-.explore-btn small { display: block; font-weight: 400; font-size: 12.5px; opacity: .85; margin-top: 2px; }
+.list-title { margin: 14px 18px 2px; }
+.actions .loader-bar { padding: 0; }
+
+.divider {
+  display: flex; align-items: center; gap: 12px; margin: 12px 2px;
+  color: var(--muted); font-size: 12px;
+}
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+.explore-btn {
+  width: 100%; display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 14px; text-align: left;
+  background: linear-gradient(135deg, #0e7490, #155e48); color: #fff;
+  border: 1px solid rgba(255,255,255,.12); box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+.explore-btn .x-icon {
+  width: 42px; height: 42px; flex: none; border-radius: 12px; font-size: 22px;
+  background: rgba(255,255,255,.14); display: grid; place-items: center;
+}
+.explore-btn .x-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.explore-btn .x-title { font-size: 16px; font-weight: 700; }
+.explore-btn .x-sub { font-size: 12.5px; opacity: .85; font-weight: 400; }
+.explore-btn .x-chev { font-size: 22px; opacity: .7; flex: none; }
 .explore-btn:active { filter: brightness(.92); }
 
 .route-list { flex: 1; overflow-y: auto; padding: 4px 16px 20px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
 
 .explore-bar {
-  position: absolute; left: 12px; right: 12px; top: calc(var(--safe-top) + 58px); z-index: 600;
+  position: absolute; left: 12px; right: 12px; top: calc(var(--safe-top) + 92px); z-index: 600;
   background: rgba(15,23,42,.95); border: 1px solid var(--line); border-radius: 16px;
   padding: 12px 14px; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,.45);
   display: flex; flex-direction: column; gap: 10px;
@@ -126,12 +149,24 @@ button[disabled] { opacity: .55; pointer-events: none; }
 
 .map-topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 500;
-  display: flex; align-items: center; gap: 8px;
-  padding: calc(var(--safe-top) + 10px) 10px 10px;
-  background: linear-gradient(180deg, rgba(15,23,42,.92), rgba(15,23,42,0));
+  display: flex; flex-direction: column; gap: 6px;
+  padding: calc(var(--safe-top) + 10px) 10px 14px;
+  background: linear-gradient(180deg, rgba(15,23,42,.92) 60%, rgba(15,23,42,0));
   pointer-events: none;
 }
-.map-topbar > * { pointer-events: auto; }
+.map-topbar * { pointer-events: auto; }
+.map-topbar-row { display: flex; align-items: center; gap: 8px; }
+
+/* Status: internet + GPS */
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.statusbar { display: flex; gap: 12px; font-size: 11.5px; color: var(--muted); align-items: center; }
+.statusbar.on-map { color: #cbd5e1; justify-content: center; pointer-events: none !important; }
+.statusbar .stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sdot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex: none; }
+.sdot.ok { background: #22c55e; }
+.sdot.bad { background: #ef4444; }
+.sdot.mid { background: #3b82f6; }
+.sdot.pulse { animation: pulse 1.6s infinite; }
 /* Kaart-overlays liggen op een donker glas → altijd lichte tekst, ongeacht thema. */
 .chip {
   background: rgba(30,41,59,.92); color: #e2e8f0; border: 1px solid rgba(148,163,184,.25);
@@ -156,7 +191,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
 .fab:active { transform: scale(.94); }
 
 .offroute {
-  position: absolute; top: calc(var(--safe-top) + 60px); left: 12px; right: 12px; z-index: 500;
+  position: absolute; top: calc(var(--safe-top) + 92px); left: 12px; right: 12px; z-index: 500;
   background: rgba(180, 83, 9, .95); color: #fff; border-radius: 12px;
   padding: 10px 14px; font-size: 14px; font-weight: 600; text-align: center;
   box-shadow: 0 6px 18px rgba(0,0,0,.4);

@@ -13,6 +13,8 @@
     accCircle: null,
     watchId: null,
     mode: 'idle', // idle | located | tracking
+    gpsState: 'off', // off | searching | fix | denied
+    lastFixAt: 0,
     wakeLock: null,
     _onModeChange: null,
 
@@ -229,32 +231,45 @@
     },
 
     // ---------- Locatie (eenmalig) ----------
-    locateOnce(onFix, onErr) {
-      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); if (onErr) onErr(); return; }
+    locateOnce(onFix, onErr, opts) {
+      opts = opts || {};
+      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); this._setGps('denied'); if (onErr) onErr(); return; }
       App.toast('Locatie bepalen…');
+      this._setGps('searching');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           this._setMode('located');
+          this._setGps('fix');
           this._updateLocation(pos, false);
           const ll = [pos.coords.latitude, pos.coords.longitude];
           const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
           this.map.setView(ll, z, { animate: true });
           if (onFix) onFix(pos);
         },
-        (err) => { App.toast('Locatie mislukt: ' + friendlyGeoError(err)); if (onErr) onErr(err); },
-        // Verse meting bij elke tik (geen oude gecachte positie) — dat is net de bedoeling.
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        (err) => {
+          this._setGps(err && err.code === 1 ? 'denied' : 'off');
+          App.toast('Locatie mislukt: ' + friendlyGeoError(err));
+          if (onErr) onErr(err);
+        },
+        // Normaal: verse, nauwkeurige meting bij elke tik. Verken-modus (fast):
+        // een recente/grove fix volstaat om routes in de buurt te vinden — veel sneller.
+        opts.fast
+          ? { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+          : { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     },
 
     // ---------- Locatie volgen (tracking) ----------
     startTracking() {
-      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); return; }
+      if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); this._setGps('denied'); return; }
       if (this.watchId != null) return;
       this._setMode('tracking');
+      // Eerlijk zijn: pas "actief" claimen als er écht een fix binnenkomt.
+      this._setGps('searching');
       this._followed = true;
       this.watchId = navigator.geolocation.watchPosition(
         (pos) => {
+          this._setGps('fix');
           this._updateLocation(pos, true);
           if (this._followed) {
             this.map.setView(
@@ -264,9 +279,25 @@
             );
           }
         },
-        (err) => App.toast('Tracking: ' + friendlyGeoError(err)),
+        (err) => {
+          if (err && err.code === 1) {
+            // Toegang geweigerd: tracking heeft geen zin — stop en zeg het duidelijk.
+            App.toast('GPS-toegang geweigerd — tracking gestopt');
+            this.stopTracking();
+            this._setGps('denied');
+            return;
+          }
+          this._setGps('searching');
+          App.toast('Tracking: ' + friendlyGeoError(err));
+        },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 2000 }
       );
+      // Detecteer een wegvallend signaal: >30 s geen fix = terug naar "zoeken".
+      this._staleTimer = setInterval(() => {
+        if (this.gpsState === 'fix' && Date.now() - this.lastFixAt > 30000) {
+          this._setGps('searching');
+        }
+      }, 10000);
       // Zodra de gebruiker zelf pant, stoppen we met auto-centreren (zuiniger + minder storend)
       this.map.once('dragstart', () => { this._followed = false; });
     },
@@ -276,9 +307,11 @@
         navigator.geolocation.clearWatch(this.watchId);
         this.watchId = null;
       }
+      if (this._staleTimer) { clearInterval(this._staleTimer); this._staleTimer = null; }
       this.releaseWake();
       // Behoud de laatste positie-marker maar val terug naar 'located'
       this._setMode(this.locMarker ? 'located' : 'idle');
+      this._setGps(this.locMarker ? 'fix' : 'off');
     },
 
     clearLocation() {
@@ -332,7 +365,15 @@
 
     _setMode(mode) {
       this.mode = mode;
+      if (mode === 'idle') this.gpsState = 'off';
       if (this._onModeChange) this._onModeChange(mode);
+      if (global.App && App.updateStatus) App.updateStatus();
+    },
+
+    _setGps(state) {
+      this.gpsState = state;
+      if (state === 'fix') this.lastFixAt = Date.now();
+      if (global.App && App.updateStatus) App.updateStatus();
     },
 
     // ---------- Scherm aan houden (optioneel, enkel bij tracking) ----------

@@ -26,20 +26,34 @@
         <img src="icons/favicon-64.png" alt="" width="28" height="28" />
         <h1>Wandelen</h1>
       </div>
-      <button id="btn-about" class="icon-btn" title="Info" aria-label="Info">&#9432;</button>
+      <div class="topbar-right">
+        <div id="statusbar-list" class="statusbar"></div>
+        <button id="btn-about" class="icon-btn" title="Info" aria-label="Info">&#9432;</button>
+      </div>
     </header>
 
-    <div class="loader-bar">
-      <input id="url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-             placeholder="Plak een Komoot-tour URL…" aria-label="Komoot URL" />
-      <button id="btn-load" class="primary">Laden</button>
-    </div>
-    <p id="load-status" class="load-status" hidden></p>
+    <section class="actions">
+      <h2 class="section-title">Komoot-URL inladen</h2>
+      <div class="loader-bar">
+        <input id="url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="Plak een Komoot-tour URL…" aria-label="Komoot URL" />
+        <button id="btn-load" class="primary">Laden</button>
+      </div>
+      <p id="load-status" class="load-status" hidden></p>
 
-    <button id="btn-explore" class="explore-btn">
-      🧭 Nieuwe wandeling <small>— routes in de buurt (geen Komoot nodig)</small>
-    </button>
+      <div class="divider"><span>of</span></div>
 
+      <button id="btn-explore" class="explore-btn">
+        <span class="x-icon">🧭</span>
+        <span class="x-text">
+          <span class="x-title">Nieuwe wandeling</span>
+          <span class="x-sub">Ontdek bewegwijzerde routes in je buurt</span>
+        </span>
+        <span class="x-chev">›</span>
+      </button>
+    </section>
+
+    <h2 class="section-title list-title">Opgeslagen wandelingen</h2>
     <div id="route-list" class="route-list" aria-live="polite"></div>
 
     <p id="list-empty" class="empty" hidden>
@@ -57,12 +71,14 @@
     <div id="map"></div>
 
     <header class="map-topbar">
-      <button id="btn-back" class="chip" aria-label="Terug">‹ Terug</button>
-      <div class="map-title">
-        <span id="map-route-name">Route</span>
-        <small id="map-route-meta"></small>
+      <div class="map-topbar-row">
+        <button id="btn-back" class="chip" aria-label="Terug">‹ Terug</button>
+        <div class="map-title">
+          <span id="map-route-name">Route</span>
+          <small id="map-route-meta"></small>
+        </div>
       </div>
-      <button id="btn-tiles" class="chip" title="Kaart offline opslaan">⬇ Offline</button>
+      <div id="statusbar-map" class="statusbar on-map"></div>
     </header>
 
     <div id="offroute-banner" class="offroute" hidden></div>
@@ -99,14 +115,14 @@
   <!-- ============ TILE-DOWNLOAD OVERLAY ============ -->
   <div id="tile-overlay" class="overlay" hidden>
     <div class="sheet">
-      <h2>Kaart offline opslaan</h2>
-      <p>Sla de kaarttegels rond deze route op zodat je ze zonder internet kan bekijken. Doe dit één keer met wifi.</p>
+      <h2>Regio offline opslaan</h2>
+      <p>Sla de kaart, routes en horeca van dit gebied op zodat je hier ook zonder internet nieuwe wandelingen kan kiezen. Doe dit met wifi.</p>
       <label class="zoom-row">
         Detailniveau
         <select id="tile-detail">
           <option value="overview">Overzicht — klein (z12–14)</option>
-          <option value="normal" selected>Normaal — aanbevolen (z12–16)</option>
-          <option value="fine">Fijn — groot (z12–17)</option>
+          <option value="normal">Normaal (z12–16)</option>
+          <option value="fine" selected>Fijn — hoogste resolutie (z12–18)</option>
         </select>
       </label>
       <p id="tile-estimate" class="tile-estimate"></p>

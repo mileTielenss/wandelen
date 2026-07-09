@@ -15,12 +15,57 @@
 
   function buildQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
-    return `[out:json][timeout:60];(` +
+    return `[out:json][timeout:20];(` +
       `node["rwn_ref"](${bbox});` +
       `node["lwn_ref"](${bbox});` +
       `nwr["amenity"~"^(${HORECA})$"](${bbox});` +
       `node["shop"="bakery"](${bbox});` +
-      `);out center;`;
+      `);out center qt;`;
+  }
+
+  function delay(ms, signal) {
+    return new Promise((res) => {
+      const t = setTimeout(res, ms);
+      if (signal) signal.addEventListener('abort', () => { clearTimeout(t); res(); }, { once: true });
+    });
+  }
+
+  /** Snelle query: alle mirrors "hedged" parallel (2e start na 3,5s, 3e na 7s);
+      het eerste geldige antwoord wint en de rest wordt afgebroken. */
+  async function postQuery(q, timeoutMs) {
+    timeoutMs = timeoutMs || 14000;
+    const stop = new AbortController();
+    const attempts = ENDPOINTS.map((ep, i) => (async () => {
+      if (i > 0) {
+        await delay(i * 3500, stop.signal);
+        if (stop.signal.aborted) throw new Error('cancelled');
+      }
+      const ctrl = new AbortController();
+      const onStop = () => ctrl.abort();
+      stop.signal.addEventListener('abort', onStop, { once: true });
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body: 'data=' + encodeURIComponent(q),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+        stop.signal.removeEventListener('abort', onStop);
+      }
+    })());
+    try {
+      const winner = await Promise.any(attempts);
+      stop.abort();
+      return winner;
+    } catch (_) {
+      stop.abort();
+      throw new Error('Overpass niet bereikbaar');
+    }
   }
 
   function parse(data) {
@@ -48,24 +93,7 @@
 
   /** bounds = {minLat,minLng,maxLat,maxLng}. Geeft {nodes, horeca}. */
   async function fetchOverlays(bounds) {
-    const q = buildQuery(bounds);
-    let lastErr = null;
-    for (const ep of ENDPOINTS) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 30000);
-        const res = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-          body: 'data=' + encodeURIComponent(q),
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-        return parse(await res.json());
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Overpass niet bereikbaar');
+    return parse(await postQuery(buildQuery(bounds)));
   }
 
   // ---------- Bewegwijzerde wandelroutes (lokale gekleurde lussen) ----------
@@ -154,24 +182,8 @@
   /** Haal bewegwijzerde lokale wandelroutes (lwn) op binnen bounds. */
   async function fetchRoutes(bounds) {
     const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
-    const q = `[out:json][timeout:90];rel["route"~"^(hiking|foot|walking)$"]["network"="lwn"](${bbox});out geom;`;
-    let lastErr = null;
-    for (const ep of ENDPOINTS) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 35000);
-        const res = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-          body: 'data=' + encodeURIComponent(q),
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-        return parseRoutes(await res.json());
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Overpass niet bereikbaar');
+    const q = `[out:json][timeout:20];rel["route"~"^(hiking|foot|walking)$"]["network"="lwn"](${bbox});out geom qt;`;
+    return parseRoutes(await postQuery(q, 16000));
   }
 
   function boundsFromCenter(lat, lng, radiusM) {
