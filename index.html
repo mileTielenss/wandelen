@@ -97,8 +97,7 @@
       </div>
       <div class="explore-actions">
         <button id="explore-search" class="chip" title="Zoek routes in dit kaartbeeld">🔄 Zoek hier</button>
-        <button id="explore-region" class="chip" title="Deze regio offline opslaan">⬇ Regio</button>
-        <button id="explore-follow" class="primary" disabled>Volg</button>
+        <button id="explore-follow" class="primary" disabled>Volg deze route</button>
       </div>
     </div>
 
@@ -111,31 +110,6 @@
       <button id="btn-track-stop" class="stop">Stop</button>
     </div>
   </section>
-
-  <!-- ============ TILE-DOWNLOAD OVERLAY ============ -->
-  <div id="tile-overlay" class="overlay" hidden>
-    <div class="sheet">
-      <h2>Regio offline opslaan</h2>
-      <p>Sla de kaart, routes en horeca van dit gebied op zodat je hier ook zonder internet nieuwe wandelingen kan kiezen. Doe dit met wifi.</p>
-      <label class="zoom-row">
-        Detailniveau
-        <select id="tile-detail">
-          <option value="overview">Overzicht — klein (z12–14)</option>
-          <option value="normal">Normaal (z12–16)</option>
-          <option value="fine" selected>Fijn — hoogste resolutie (z12–18)</option>
-        </select>
-      </label>
-      <p id="tile-estimate" class="tile-estimate"></p>
-      <div id="tile-progress" class="tile-progress" hidden>
-        <div class="bar"><div id="tile-bar-fill"></div></div>
-        <span id="tile-progress-text">0%</span>
-      </div>
-      <div class="sheet-actions">
-        <button id="tile-cancel" class="ghost">Sluiten</button>
-        <button id="tile-start" class="primary">Downloaden</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ============ KAARTLAGEN OVERLAY ============ -->
   <div id="layers-overlay" class="overlay" hidden>

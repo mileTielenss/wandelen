@@ -314,6 +314,8 @@
       this._setMode(this.locMarker ? 'located' : 'idle');
       // Watch is gestopt → GPS-hardware uit, dus lampje uit.
       this._setGps('off');
+      // Bugfix: marker terug blauw — de rode (tracking)stijl geldt enkel tijdens volgen.
+      if (this.locMarker) this.locMarker.setIcon(this._locIcon(false));
     },
 
     clearLocation() {
@@ -324,13 +326,17 @@
       App.setOffRoute(null);
     },
 
-    _updateLocation(pos, tracking) {
-      const ll = [pos.coords.latitude, pos.coords.longitude];
-      const acc = pos.coords.accuracy || 0;
-      const icon = L.divIcon({
+    _locIcon(tracking) {
+      return L.divIcon({
         className: '', html: `<div class="loc-dot ${tracking ? 'tracking' : ''}"></div>`,
         iconSize: [18, 18], iconAnchor: [9, 9],
       });
+    },
+
+    _updateLocation(pos, tracking) {
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      const acc = pos.coords.accuracy || 0;
+      const icon = this._locIcon(tracking);
       if (!this.locMarker) {
         this.locMarker = L.marker(ll, { icon, interactive: false, keyboard: false }).addTo(this.map);
       } else {
@@ -480,5 +486,5 @@
   }
 
   global.MapView = MapView;
-  global.Geo = { nearestDistanceMeters };
+  global.Geo = { nearestDistanceMeters, projectOnRoute, buildCum, segProject, haversineM, minDistToSegments };
 })(window);

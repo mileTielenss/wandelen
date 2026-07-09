@@ -6,7 +6,6 @@
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
-  let _tileAbort = null;
 
   const App = {
     async init() {
@@ -166,9 +165,15 @@
         const route = await Komoot.importFromUrl(url);
         const existing = await DB.get(route.id);
         if (existing) {
-          route.name = existing.name;          // behoud eigen naam
+          // Behoud alles wat lokaal al opgebouwd is: eigen naam, offline
+          // tegels én de opgehaalde knooppunten/horeca.
+          route.name = existing.name;
           route.tilesCached = existing.tilesCached;
           route.tileDetail = existing.tileDetail;
+          route.tileMaps = existing.tileMaps;
+          route.nodes = existing.nodes;
+          route.horeca = existing.horeca;
+          route.overlaysFetched = existing.overlaysFetched;
         }
         const existed = !!existing;
         await DB.put(route);
@@ -371,6 +376,8 @@
             bounds, routes, savedAt: new Date().toISOString(),
           };
           DB.putRegion(region).then(async () => { this._regions = await DB.allRegions(); }).catch(() => {});
+          // En haal het gebied (kaart + routes) automatisch offline binnen.
+          this._autoCacheRegion(bounds, routes);
         }
       } catch (e) {
         if (mySeq !== this._exploreSeq || !this._exploreActive) return;
@@ -473,93 +480,45 @@
       this.toast('Route verwijderd');
     },
 
-    // ---------- Offline tegels ----------
-    openTileSheet(mode) {
-      this._tileMode = mode === 'region' ? 'region' : 'route';
-      if (this._tileMode === 'route' && !_current) return;
-      if (this._tileMode === 'region' && !this._exploreBounds) return;
-      this._updateTileEstimate();
-      $('tile-progress').hidden = true;
-      $('tile-progress-text').textContent = '0%';
-      $('tile-bar-fill').style.width = '0%';
-      $('tile-start').disabled = false;
-      $('tile-start').textContent = 'Downloaden';
-      this._show('tile-overlay');
-    },
-    _updateTileEstimate() {
-      const detail = $('tile-detail').value;
-      const bm = Tiles.getBasemap(this.prefs.basemap);
-      const est = this._tileMode === 'region'
-        ? Tiles.estimateBBox(this._exploreBounds, detail, bm)
-        : Tiles.estimate(_current.coords, detail, bm);
-      const what = this._tileMode === 'region' ? 'Regio' : 'Route';
-      $('tile-estimate').textContent =
-        `${what} · kaart “${bm.name}” · ± ${est.count} tegels · ongeveer ${est.mb} MB. Doe dit met wifi.`;
-    },
-    async startTileDownload() {
-      const detail = $('tile-detail').value;
-      const bm = Tiles.getBasemap(this.prefs.basemap);
-      const region = this._tileMode === 'region';
-      if (region && !this._exploreBounds) return;
-      if (!region && !_current) return;
-      $('tile-progress').hidden = false;
-      $('tile-start').disabled = true;
-      $('tile-cancel').textContent = 'Stop';
-      _tileAbort = new AbortController();
-      const onProg = (done, total) => {
-        const pct = Math.round((done / total) * 100);
-        $('tile-bar-fill').style.width = pct + '%';
-        $('tile-progress-text').textContent = `${pct}% (${done}/${total})`;
-      };
-      try {
-        const result = region
-          ? await Tiles.downloadBBox(this._exploreBounds, detail, bm, onProg, _tileAbort.signal)
-          : await Tiles.download(_current.coords, detail, bm, onProg, _tileAbort.signal);
-        if (result.cancelled) { this.toast('Download gestopt'); return; }
-        if (region) {
-          await this._saveRegion(detail, bm, result.ok);
-        } else {
-          _current.tilesCached = true;
-          _current.tileDetail = detail;
-          await DB.put(_current);
-          await this.refreshList();
-          this.toast(`Kaart offline opgeslagen (${result.ok} tegels)`);
-        }
-        this._hide('tile-overlay');
-      } catch (e) {
-        this.toast('Download mislukt');
-      } finally {
-        _tileAbort = null;
-        $('tile-cancel').textContent = 'Sluiten';
-        $('tile-start').disabled = false;
-      }
-    },
-
-    async _saveRegion(detail, bm, okTiles) {
-      const bounds = this._exploreBounds;
-      let horeca = [], nodes = [];
-      if (navigator.onLine) {
-        try { ({ nodes, horeca } = await Overpass.fetchOverlays(bounds)); } catch (_) {}
-      }
+    // ---------- Verkende regio automatisch offline ----------
+    // Na een geslaagde online zoekactie: sla het gebied stilletjes op (routes +
+    // kaarttegels op overzichtsniveau), zodat je hier later offline kan kiezen.
+    // Volg je daarna een route, dan cachet die zichzelf op hoogste detail.
+    async _autoCacheRegion(bounds, routes) {
+      if (!navigator.onLine || !routes.length || this._regionJob) return;
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
-      const region = {
-        id: 'region-' + Math.round(cx * 1000) + '_' + Math.round(cy * 1000),
-        name: 'Regio ' + cx.toFixed(3) + ', ' + cy.toFixed(3),
-        bounds,
-        routes: (this._exploreRoutes || []).map((r) => ({
-          id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col,
-          distance: r.distance, segments: r.segments, coords: r.coords,
-        })),
-        horeca, nodes, basemap: bm.key, detail,
-        savedAt: new Date().toISOString(),
-      };
-      await DB.putRegion(region);
-      this._regions = await DB.allRegions();
-      this.toast(`Regio offline: ${okTiles} tegels, ${region.routes.length} routes`);
-    },
-    cancelTile() {
-      if (_tileAbort) { _tileAbort.abort(); return; }
-      this._hide('tile-overlay');
+      const id = 'region-' + Math.round(cx * 200) + '_' + Math.round(cy * 200);
+      const existing = (this._regions || []).find((r) => r.id === id);
+      const fresh = existing &&
+        Date.now() - new Date(existing.savedAt || 0).getTime() < 30 * 24 * 3600 * 1000;
+      if (fresh) return;
+      this._regionJob = id;
+      try {
+        const bm = Tiles.getBasemap(this.prefs.basemap);
+        const result = await Tiles.downloadBBox(
+          bounds, 'normal', bm,
+          (d, t) => { this._tilePct = Math.round((d / t) * 100); this.updateStatus(); }
+        );
+        const region = {
+          id,
+          name: 'Regio ' + cx.toFixed(3) + ', ' + cy.toFixed(3),
+          bounds,
+          routes: routes.map((r) => ({
+            id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col,
+            distance: r.distance, segments: r.segments, coords: r.coords,
+          })),
+          basemap: bm.key,
+          savedAt: new Date().toISOString(),
+        };
+        await DB.putRegion(region);
+        this._regions = await DB.allRegions();
+        if (result.ok > 0) this.toast('Gebied offline opgeslagen ✓');
+      } catch (_) { /* stil: volgende keer opnieuw */ }
+      finally {
+        this._regionJob = null;
+        this._tilePct = null;
+        this.updateStatus();
+      }
     },
 
     // ---------- Kaartlagen ----------
@@ -718,12 +677,7 @@
         $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
         this._exploreFetch();
       });
-      $('explore-region').addEventListener('click', () => this.openTileSheet('region'));
       $('explore-follow').addEventListener('click', () => this.followSelected());
-
-      $('tile-detail').addEventListener('change', () => this._updateTileEstimate());
-      $('tile-start').addEventListener('click', () => this.startTileDownload());
-      $('tile-cancel').addEventListener('click', () => this.cancelTile());
 
       $('menu-save').addEventListener('click', () => this.saveMenu());
       $('menu-cancel').addEventListener('click', () => this._hide('menu-overlay'));

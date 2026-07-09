@@ -204,5 +204,9 @@
     return { minLat: minLat - m, minLng: minLng - m, maxLat: maxLat + m, maxLng: maxLng + m };
   }
 
-  global.Overpass = { fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK };
+  global.Overpass = {
+    fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK,
+    // Interne functies, blootgesteld voor unit-tests.
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery },
+  };
 })(window);

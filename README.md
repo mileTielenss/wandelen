@@ -34,8 +34,8 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   álle bewegwijzerde wandellussen rond je, elk in **de kleur van de pijltjes** en met de
   **afstand**. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
-  Met **⬇ Regio** sla je een heel gebied offline op (kaarttegels + alle routes + horeca),
-  zodat je ook zonder internet nieuwe wandelingen kan kiezen.
+  Het verkende gebied (kaart + routes) wordt daarbij **automatisch** offline opgeslagen,
+  zodat je er ook zonder internet nieuwe wandelingen kan kiezen.
 - **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
   de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
@@ -44,8 +44,8 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   als er echt een GPS-fix is.
 
 > Kaarttegels voor een héél land (bv. heel België) zijn bewust niet mogelijk: dat zijn
-> tientallen GB en de tegel-providers staan bulk-downloads niet toe. Cache de **streek**
-> waar je wandelt via **⬇ Regio** of per route.
+> tientallen GB en de tegel-providers staan bulk-downloads niet toe. De streek waar je
+> wandelt of verkent wordt automatisch gecachet; dat is ruim voldoende.
 
 ## Batterijzuinig ontwerp
 
@@ -87,6 +87,21 @@ python3 -m http.server 8080
    en de kaart wordt automatisch offline opgeslagen (met internet).
 
 > Je kan de app ook openen met `?url=<komoot-url>` om meteen te importeren.
+
+## Testen
+
+```bash
+npm install   # eenmalig (playwright-core)
+npm test      # unit- + E2E-suite met coverage-rapport
+```
+
+De suite (`tests/run.mjs`) draait ~123 asserts in een headless Chromium: unit-tests van
+alle pure logica en E2E-scenario's voor elk scherm en elke flow (import, kaartlagen,
+overlays, locatie, tracking incl. regressietest op de rode-stip-bug, verkennen,
+offline herstart, statuslampjes). Externe services (Komoot, Overpass, tegelservers)
+worden gemockt. Coverage over `js/*.js`: **±95%** — de restfractie is defensieve
+foutafhandeling (bv. IndexedDB-storingen) en de 30s-GPS-signaalbewaking; `sw.js` draait
+in een worker (buiten page-coverage) en wordt functioneel getest via de offline-herstart.
 
 ## Techniek
 

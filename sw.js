@@ -1,7 +1,7 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
-const APP_CACHE = 'wandelen-app-v2';
+const APP_CACHE = 'wandelen-app-v3';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];
@@ -83,22 +83,26 @@ async function tileStrategy(req) {
   }
 }
 
+// Stale-while-revalidate: serveer direct uit cache (offline-proof, snel),
+// maar ververs op de achtergrond zodat updates vanzelf binnenkomen.
 async function appStrategy(req) {
   const cache = await caches.open(APP_CACHE);
   const cached = await cache.match(req, { ignoreSearch: true });
-  if (cached) return cached;
-  try {
-    const res = await fetch(req);
-    if (res && res.ok && res.type === 'basic') cache.put(req, res.clone());
-    return res;
-  } catch (e) {
-    // Navigatie offline: val terug op de app-shell
-    if (req.mode === 'navigate') {
-      const shell = await cache.match('index.html');
-      if (shell) return shell;
-    }
-    throw e;
+  const refresh = fetch(req)
+    .then((res) => {
+      if (res && res.ok && res.type === 'basic') cache.put(req, res.clone());
+      return res;
+    })
+    .catch(() => null);
+  if (cached) { refresh.catch(() => {}); return cached; }
+  const res = await refresh;
+  if (res) return res;
+  // Navigatie offline: val terug op de app-shell
+  if (req.mode === 'navigate') {
+    const shell = await cache.match('index.html');
+    if (shell) return shell;
   }
+  return new Response('offline', { status: 503 });
 }
 
 function TRANSPARENT_TILE() {
