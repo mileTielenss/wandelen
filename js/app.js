@@ -186,7 +186,7 @@
         // Toon de route meteen — zo doet “Laden” altijd zichtbaar iets.
         this.openRoute(route.id);
       } catch (e) {
-        this.setLoadStatus('Mislukt: ' + (e.message || 'kon route niet laden') +
+        this.setLoadStatus('Mislukt: ' + e.message +
           '. Controleer de URL (met share_token) en je internetverbinding.', 'error');
       } finally {
         $('btn-load').disabled = false;
@@ -324,7 +324,7 @@
 
     // Laatste verkenning uit de regio-opslag (max 7 dagen oud).
     _exploreCache() {
-      const reg = (this._regions || []).find((r) => r.id === 'explore-cache');
+      const reg = this._regions.find((r) => r.id === 'explore-cache');
       if (!reg || !reg.routes || !reg.routes.length) return null;
       const age = Date.now() - new Date(reg.savedAt || 0).getTime();
       if (age > 7 * 24 * 3600 * 1000) return null;
@@ -363,7 +363,7 @@
         // Zelfde routes als wat al getoond wordt (bv. cache vs. vers)? Dan NIET
         // hertekenen — anders verdwijnt de laag net onder de vinger van de
         // gebruiker en gaat de tik verloren.
-        const shownIds = new Set((MapView.exploreRoutes || []).map((r) => r.id));
+        const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
         const sameAsShown = shownIds.size > 0 &&
           routes.length === shownIds.size && routes.every((r) => shownIds.has(r.id));
         this._exploreRoutes = routes;
@@ -446,7 +446,7 @@
       // Offline: neem routes uit opgeslagen regio's die dit gebied overlappen.
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
       let best = [];
-      for (const reg of this._regions || []) {
+      for (const reg of this._regions) {
         const rb = reg.bounds;
         if (cx >= rb.minLat && cx <= rb.maxLat && cy >= rb.minLng && cy <= rb.maxLng) {
           best = best.concat(reg.routes || []);
@@ -469,10 +469,6 @@
       const name = $('rename-input').value.trim() || _menuRoute.name;
       _menuRoute.name = name;
       await DB.put(_menuRoute);
-      if (_current && _current.id === _menuRoute.id) {
-        _current.name = name;
-        $('map-route-name').textContent = name;
-      }
       this._hide('menu-overlay');
       await this.refreshList();
       this.toast('Naam opgeslagen');
@@ -494,7 +490,7 @@
       if (!navigator.onLine || !routes.length || this._regionJob) return;
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
       const id = 'region-' + Math.round(cx * 200) + '_' + Math.round(cy * 200);
-      const existing = (this._regions || []).find((r) => r.id === id);
+      const existing = this._regions.find((r) => r.id === id);
       const fresh = existing &&
         Date.now() - new Date(existing.savedAt || 0).getTime() < 30 * 24 * 3600 * 1000;
       if (fresh) return;

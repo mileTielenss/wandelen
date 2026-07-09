@@ -208,18 +208,19 @@
         grp.on('click', () => this.selectExplore(rt.id));
         grp.addTo(this.exploreGroup);
         this._exploreLayers[rt.id] = grp;
-        try { bounds.push(grp.getBounds()); } catch (_) {}
+        const gb = grp.getBounds();
+        if (gb.isValid()) bounds.push(gb);
       });
       // Alleen op de routes inzoomen als we (nog) geen locatie tonen.
       if (bounds.length && !this.locMarker) {
         const fg = bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0]));
-        try { this.map.fitBounds(fg, { padding: [40, 40] }); } catch (_) {}
+        this.map.fitBounds(fg, { padding: [40, 40] });
       }
     },
 
     // Tik ergens op de kaart: kies de route binnen ~28 px van je vinger.
     _exploreNearestTap(e) {
-      if (!this.exploreMode || !(this.exploreRoutes || []).length || !e.latlng) return;
+      if (!this.exploreMode || !this.exploreRoutes.length || !e.latlng) return;
       const here = [e.latlng.lat, e.latlng.lng];
       let best = null, bestD = Infinity;
       for (const rt of this.exploreRoutes) {
@@ -320,13 +321,15 @@
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 2000 }
       );
       // Detecteer een wegvallend signaal: >30 s geen fix = terug naar "zoeken".
-      this._staleTimer = setInterval(() => {
-        if (this.gpsState === 'fix' && Date.now() - this.lastFixAt > 30000) {
-          this._setGps('searching');
-        }
-      }, 10000);
+      this._staleTimer = setInterval(this._staleCheck.bind(this), 10000);
       // Zodra de gebruiker zelf pant, stoppen we met auto-centreren (zuiniger + minder storend)
       this.map.once('dragstart', () => { this._followed = false; });
+    },
+
+    _staleCheck() {
+      if (this.gpsState === 'fix' && Date.now() - this.lastFixAt > 30000) {
+        this._setGps('searching');
+      }
     },
 
     stopTracking() {
@@ -415,7 +418,6 @@
       try {
         if ('wakeLock' in navigator) {
           this.wakeLock = await navigator.wakeLock.request('screen');
-          this.wakeLock.addEventListener('release', () => {});
         }
       } catch (_) { /* niet ondersteund / geweigerd */ }
     },

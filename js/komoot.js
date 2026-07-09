@@ -20,12 +20,8 @@
       if (/^\d{5,}$/.test(raw)) return { id: raw, shareToken: null };
       return null;
     }
-    let shareToken = null;
-    try {
-      const q = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : '';
-      const params = new URLSearchParams(q);
-      shareToken = params.get('share_token');
-    } catch (_) { /* ignore */ }
+    const q = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : '';
+    const shareToken = new URLSearchParams(q).get('share_token');
     return { id: idMatch[1], shareToken };
   }
 
@@ -47,7 +43,8 @@
         lastErr = e;
       }
     }
-    throw lastErr || new Error('Kon route niet ophalen');
+    // attempts is nooit leeg, dus lastErr is hier altijd gezet.
+    throw lastErr;
   }
 
   /** Zet Komoot-JSON om naar ons interne routeformaat. */

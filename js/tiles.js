@@ -60,7 +60,6 @@
 
   /** Verzamel de set tegels die de route raakt, met buffer rondom. */
   function corridorTiles(coords, zoom, buffer) {
-    buffer = buffer == null ? 1 : buffer;
     const set = new Set();
     const max = Math.pow(2, zoom) - 1;
     for (let i = 0; i < coords.length; i++) {

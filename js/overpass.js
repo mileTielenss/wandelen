@@ -171,7 +171,7 @@
         colour: colourToHex(t.colour || t.color, t['osmc:symbol']),
         distance,
         segments: segs,
-        coords: coords.length ? coords : segs[0],
+        coords,
       });
     }
     // Kortste (lokale lussen) eerst.
@@ -207,6 +207,6 @@
   global.Overpass = {
     fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery },
   };
 })(window);

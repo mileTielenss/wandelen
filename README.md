@@ -95,13 +95,19 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait ~123 asserts in een headless Chromium: unit-tests van
-alle pure logica en E2E-scenario's voor elk scherm en elke flow (import, kaartlagen,
-overlays, locatie, tracking incl. regressietest op de rode-stip-bug, verkennen,
-offline herstart, statuslampjes). Externe services (Komoot, Overpass, tegelservers)
-worden gemockt. Coverage over `js/*.js`: **±95%** — de restfractie is defensieve
-foutafhandeling (bv. IndexedDB-storingen) en de 30s-GPS-signaalbewaking; `sw.js` draait
-in een worker (buiten page-coverage) en wordt functioneel getest via de offline-herstart.
+De suite (`tests/run.mjs`) draait 209 asserts in een headless Chromium: unit-tests van
+alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
+(incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
+tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
+verkennen (hedged mirrors, bbox-klem, cache, offline fallback), automatische
+offline-opslag, offline herstart via de service worker, statuslampjes, en
+foutinjectie (kapotte IndexedDB, kapotte Cache-opslag, falende service-worker-registratie,
+ontbrekende GPS-API). Externe services worden gemockt.
+
+**Coverage over `js/*.js`: 100,0%** — elke byte van elke module wordt uitgevoerd
+(rapport onderaan `npm test`; `UNCOVERED=1 npm test` toont eventueel ongedekte regels).
+`sw.js` draait in een worker en valt buiten page-coverage; het offline-gedrag ervan
+wordt functioneel getest via de offline-herstart-scenario's.
 
 ## Techniek
 

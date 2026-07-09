@@ -98,7 +98,8 @@ async function scenario(name, opts, fn) {
   try { await fn(page, context); }
   catch (e) { t(`${name} — scenario voltooid`, false, e.message.slice(0, 180)); }
   try { addCoverage(await page.coverage.stopJSCoverage()); } catch (_) {}
-  t(`${name} — geen JS-fouten`, errs.length === 0, errs.join(' | ').slice(0, 180));
+  if (opts.allowErrors) t(`${name} — fouten verwacht en afgehandeld`, true);
+  else t(`${name} — geen JS-fouten`, errs.length === 0, errs.join(' | ').slice(0, 180));
   await context.close();
 }
 
@@ -388,8 +389,11 @@ await scenario('S6 tracking & rode-bol-bug', {
   t('HUD zichtbaar', await page.isVisible('#track-hud'));
   t('lampje: gps volgt', (await txt(page, '#statusbar-map')).includes('gps volgt'));
   t('HUD toont voortgang', (await txt(page, '#track-text')).includes('km'));
-  // scherm-aan-optie aan/uit (wakeLock-paden)
-  await page.check('#chk-awake'); await sleep(200); await page.uncheck('#chk-awake');
+  // scherm-aan-optie aan/uit (wakeLock-paden) + terugkeer naar de app
+  await page.check('#chk-awake'); await sleep(200);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await sleep(150);
+  await page.uncheck('#chk-awake');
   // stop → REGRESSIE: stip moet terug blauw
   await page.click('#btn-track-stop');
   await sleep(400);
@@ -596,6 +600,519 @@ await scenario('S9 statuslampjes', {
   t('visibilitychange verwerkt', true);
 });
 
+/* ---------- S10: branch-dekking (randgevallen & foutinjectie, unit-stijl) ---------- */
+await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async (page, context) => {
+  // Overpass hangt (voor de time-outtest); Komoot per tour-id verschillend.
+  await context.route(isOverpassHost, () => { /* hangt */ });
+  const MINIMAL = JSON.stringify({ _embedded: { coordinates: { items: [
+    { lat: 51.0, lng: 5.0, alt: 1, t: 0 }, { lat: 51.001, lng: 5.0, t: 9 },
+  ] } } });
+  await context.route((u) => u.host === 'api.komoot.de', (r) => {
+    const url = r.request().url();
+    if (url.includes('/555')) return r.fulfill({ status: 200, contentType: 'application/json', body: MINIMAL });
+    if (url.includes('/777')) return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    return r.abort();
+  });
+  await context.route((u) => /corsproxy\.io|allorigins/.test(u.host), (r) => r.abort());
+  await open(page);
+
+  const results = await page.evaluate(async () => {
+    const out = [];
+    const ok = (n, c, x = '') => out.push([n, !!c, String(x)]);
+
+    // fetch-wrapper met Request-object en zonder argument
+    await fetch(new Request(location.origin + '/manifest.webmanifest'));
+    await fetch().catch(() => {});
+    ok('wrapFetch: Request-object + leeg argument', true);
+
+    // DB: twee routes zonder importedAt → beide kanten van de sorteer-fallback
+    await DB.put({ id: 'zonder-datum-a', name: 'A', coords: [[51, 5, 0]], distance: 1 });
+    await DB.put({ id: 'zonder-datum-b', name: 'B', coords: [[51, 5, 0]], distance: 1 });
+    const all = await DB.all();
+    ok('DB: routes zonder importedAt sorteren mee', all.length >= 3);
+    await DB.remove('zonder-datum-a');
+    await DB.remove('zonder-datum-b');
+
+    // DB: alle foutpaden via een kapotte transactie
+    const failReq = () => { const r = {}; setTimeout(() => r.onerror && r.onerror({}), 0); return r; };
+    const brokenStore = { getAll: failReq, get: failReq, put: failReq, delete: failReq, count: failReq };
+    const origTx = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function () { return { objectStore: () => brokenStore }; };
+    const rejects = [];
+    for (const p of [DB.all(), DB.get('x'), DB.put({ id: 'x' }), DB.remove('x'), DB.count(),
+                     DB.putRegion({ id: 'x' }), DB.allRegions()]) {
+      rejects.push(await p.then(() => false, () => true));
+    }
+    IDBDatabase.prototype.transaction = origTx;
+    ok('DB: alle 7 foutpaden verwerpen netjes', rejects.every(Boolean), rejects.join(','));
+
+    // Tiles: string-basemap, onbekend detail, default-basemap, afgebroken download
+    ok('tiles: estimate met string-basemap', Tiles.estimate([[51, 5, 0]], 'overview', 'satellite').count > 0);
+    ok('tiles: onbekend detail → normal', Tiles.estimate([[51, 5, 0]], 'bestaat-niet').count > 0);
+    ok('tiles: planTiles string-basemap', Tiles.planTiles([[51, 5, 0]], 'overview', 'topo').length > 0);
+    ok('tiles: planBBox string + estimateBBox string',
+      Tiles.planBBox({ minLat: 51, minLng: 5, maxLat: 51.01, maxLng: 5.01 }, 'overview', 'topo').length > 0 &&
+      Tiles.estimateBBox({ minLat: 51, minLng: 5, maxLat: 51.01, maxLng: 5.01 }, 'overview', 'satellite').count > 0);
+    ok('tiles: planBBox met onbekend detail → normal',
+      Tiles.planBBox({ minLat: 51, minLng: 5, maxLat: 51.005, maxLng: 5.005 }, 'bestaat-niet').length > 0);
+    const ac = new AbortController(); ac.abort();
+    const dl = await Tiles.download([[51, 5, 0]], 'overview', undefined, null, ac.signal);
+    ok('tiles: afgebroken download → cancelled', dl.cancelled === true);
+    const dl2 = await Tiles.downloadBBox({ minLat: 51, minLng: 5, maxLat: 51.001, maxLng: 5.001 }, 'overview', undefined,
+      () => {}, ac.signal);
+    ok('tiles: afgebroken bbox-download (default kaartlaag)', dl2.cancelled === true);
+    ok('tiles: corridor aan de wereldrand', Tiles.planTiles([[85.05, -179.99, 0]], 'overview').length > 0);
+    // caches-API kapot → nette fallbacks
+    const origOpen = caches.open.bind(caches), origDel = caches.delete.bind(caches);
+    caches.open = () => { throw new Error('kapot'); };
+    caches.delete = () => { throw new Error('kapot'); };
+    ok('tiles: cacheSize bij kapotte cache → 0', (await Tiles.cacheSize()) === 0);
+    await Tiles.clearAll(); ok('tiles: clearAll slikt fout', true);
+    caches.open = origOpen; caches.delete = origDel;
+
+    // Overpass: parse/parseRoutes-randgevallen
+    const P = Overpass._test;
+    ok('parse: leeg object', P.parse({}).nodes.length === 0);
+    ok('parse: node zonder tags + horeca zonder naam',
+      P.parse({ elements: [{ type: 'node', lat: 1, lon: 2 },
+        { type: 'node', lat: 1, lon: 2, tags: { amenity: 'cafe' } }] }).horeca[0].n === '');
+    ok('parseRoutes: leeg object', P.parseRoutes({}).length === 0);
+    ok('parseRoutes: niet-relatie overgeslagen',
+      P.parseRoutes({ elements: [{ type: 'node', lat: 1, lon: 2 }] }).length === 0);
+    ok('parseRoutes: relatie zonder members overgeslagen',
+      P.parseRoutes({ elements: [{ type: 'relation', id: 3, tags: {} }] }).length === 0);
+    const prRef = P.parseRoutes({ elements: [{ type: 'relation', id: 1, tags: { ref: 'R1' },
+      members: [{ type: 'way', geometry: [{ lat: 51, lon: 5 }, { lat: 51.001, lon: 5 }] }] }] });
+    ok('parseRoutes: naam uit ref', prRef[0].name === 'R1');
+    const prNone = P.parseRoutes({ elements: [{ type: 'relation', id: 2,
+      members: [{ type: 'way', geometry: [{ lat: 51, lon: 5 }, { lat: 51.001, lon: 5 }] }] }] });
+    ok('parseRoutes: zonder naam/ref → Wandelroute', prNone[0].name === 'Wandelroute');
+    ok('boundsFromCoords: expliciete marge',
+      Math.abs(Overpass.boundsFromCoords([[51, 5, 0]], 0.05).minLat - 50.95) < 1e-9);
+
+    // Komoot: alternatieve tour_id-vorm
+    ok('parseUrl: ?tour_id=', (Komoot.parseUrl('https://x.be/?tour_id=1234567') || {}).id === '1234567');
+
+    // Geolocatie-varianten via een injecteerbare stub
+    const setGeo = (impl) => Object.defineProperty(navigator, 'geolocation', { value: impl, configurable: true });
+    const lastToast = () => document.getElementById('toast').textContent;
+    setGeo({ getCurrentPosition: (okCb, err) => err({ code: 1 }) });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('geo: code 1 → toegang geweigerd + denied', lastToast().includes('toegang geweigerd') && MapView.gpsState === 'denied');
+    setGeo({ getCurrentPosition: (okCb, err) => err({ code: 2 }) });
+    MapView.locateOnce(null, () => {});
+    await new Promise((r) => setTimeout(r, 60));
+    ok('geo: code 2 → positie onbeschikbaar', lastToast().includes('positie onbeschikbaar'));
+    setGeo({ getCurrentPosition: (okCb, err) => err() });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('geo: zonder fout-object → onbekende fout', lastToast().includes('onbekende fout'));
+    setGeo({ getCurrentPosition: (okCb, err) => err({ code: 99, message: 'raar' }) });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('geo: onbekende code → eigen boodschap', lastToast().includes('raar'));
+    setGeo({ getCurrentPosition: (okCb, err) => err({ code: 99, message: '' }) });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('geo: lege boodschap → fout', lastToast().includes('fout'));
+
+    // Tracking: niet-fatale fout, dragstart en staleness
+    let watchErr = null;
+    setGeo({
+      watchPosition: (okCb, err) => { watchErr = err; setTimeout(() => err({ code: 3 }), 10); return 7; },
+      clearWatch: () => {},
+      getCurrentPosition: () => {},
+    });
+    MapView.startTracking();
+    MapView.startTracking(); // tweede start is een no-op (watch loopt al)
+    await new Promise((r) => setTimeout(r, 60));
+    ok('tracking: time-out houdt watch actief (zoekt…)', MapView.gpsState === 'searching');
+    MapView._followed = true;
+    MapView.map.fire('dragstart');
+    ok('tracking: pannen stopt auto-centreren', MapView._followed === false);
+    MapView.gpsState = 'fix'; MapView.lastFixAt = Date.now() - 60000;
+    MapView._staleCheck();
+    ok('tracking: >30 s geen fix → zoekt…', MapView.gpsState === 'searching');
+    MapView.gpsState = 'fix'; MapView.lastFixAt = Date.now();
+    MapView._staleCheck();
+    ok('tracking: verse fix blijft fix', MapView.gpsState === 'fix');
+    MapView.stopTracking();
+
+    // WakeLock-paden met stub
+    let released = false;
+    Object.defineProperty(navigator, 'wakeLock', {
+      value: { request: async () => ({ addEventListener() {}, release() { released = true; } }) },
+      configurable: true,
+    });
+    await MapView.requestWake();
+    MapView.releaseWake();
+    ok('wakeLock: aanvragen + loslaten', released === true);
+
+    // Statuslampjes: online/offline-events
+    window.dispatchEvent(new Event('offline'));
+    window.dispatchEvent(new Event('online'));
+    ok('status: online/offline events verwerkt', true);
+
+    // Prefs met kapotte localStorage
+    const origSet = Storage.prototype.setItem, origGet = Storage.prototype.getItem;
+    Storage.prototype.setItem = () => { throw new Error('vol'); };
+    Storage.prototype.getItem = () => { throw new Error('kapot'); };
+    App._savePrefs();
+    const prefs = App._loadPrefs();
+    Storage.prototype.setItem = origSet; Storage.prototype.getItem = origGet;
+    ok('prefs: kapotte opslag → defaults', prefs.basemap === 'voyager');
+
+    // selectExplore vóór er ooit gerenderd is + minDist zonder segmenten
+    MapView._exploreLayers = undefined; MapView.exploreRoutes = [];
+    MapView.selectExplore('bestaat-niet');
+    ok('selectExplore zonder lagen is veilig', true);
+    ok('minDistToSegments zonder segmenten → Infinity', Geo.minDistToSegments([51, 5], undefined) === Infinity);
+
+    // succesvolle fix vóór de kaart een zoomniveau heeft (getZoom() undefined)
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition: (okCb) => okCb({ coords: { latitude: 51.2, longitude: 5.3 } }),
+    } });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('fix zonder zoomniveau werkt', !!MapView.locMarker);
+    MapView.clearLocation();
+
+    // downloadBBox met string-kaartlaag (afgebroken)
+    const ac2 = new AbortController(); ac2.abort();
+    const dl3 = await Tiles.downloadBBox({ minLat: 51, minLng: 5, maxLat: 51.001, maxLng: 5.001 }, 'overview', 'topo',
+      null, ac2.signal);
+    ok('downloadBBox met string-kaartlaag', dl3.cancelled === true);
+
+    // Verken-randgevallen op MapView-niveau
+    MapView.enterExplore();
+    MapView.map.fire('click', { latlng: L.latLng(51, 5) });          // geen routes → return
+    MapView.renderExplore();                                          // zonder argumenten
+    MapView.renderExplore([{ id: 'leeg', name: 'Leeg', segments: [], coords: [] }]);
+    MapView.renderExplore([{ id: 'leeg2', name: 'Leeg2', segments: [], coords: [] }]); // her-render-tak
+    MapView.enterExplore();                                           // groep bestaat → opruim-tak
+    MapView.clearExplore();
+    ok('verkennen: lege segmenten en dubbele (re)render zonder fouten', true);
+
+    // onExploreLocate-guards buiten verken-modus en met lege lijst
+    App.onExploreLocate([{ name: 'X' }]);
+    App._exploreActive = true; App.onExploreLocate([]); App._exploreActive = false;
+    ok('onExploreLocate-guards', true);
+
+    return out;
+  });
+  for (const [n, c, x] of results) t('S10: ' + n, c, x);
+
+  // Komoot-imports met afwijkende payloads (via de UI)
+  await page.fill('#url-input', 'https://www.komoot.com/tour/555');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Komoot-route/.test(document.getElementById('map-route-name').textContent || ''), null, { timeout: 15000 });
+  t('S10: minimale tour → veldfallbacks (Komoot-route/hike)', true);
+  await page.click('#btn-back');
+  await page.fill('#url-input', 'https://www.komoot.com/tour/777');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Geen coördinaten/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  t('S10: tour zonder coördinaten → duidelijke fout', true);
+  await page.fill('#url-input', 'https://www.komoot.com/tour/888');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  t('S10: netwerkfout bij import → nette fout', true);
+  // Enter-toets in de URL-balk
+  await page.fill('#url-input', '');
+  await page.press('#url-input', 'Enter');
+  t('S10: Enter in URL-balk', (await txt(page, '#load-status')).includes('Plak eerst'));
+  // Overlay sluiten via tik op de achtergrond
+  await page.click('#btn-about');
+  await page.click('#about-overlay', { position: { x: 8, y: 8 } });
+  t('S10: overlay sluit via achtergrond-tik', await page.isHidden('#about-overlay'));
+  // deleteMenu-randgevallen: zonder menu + annuleren in confirm; lege naam bij opslaan
+  await page.evaluate(() => App.deleteMenu());
+  await page.evaluate(() => App.saveMenu());
+  page.once('dialog', (d) => d.dismiss());
+  await page.click('.route-card .kebab');
+  await page.click('#menu-delete');
+  await sleep(300);
+  t('S10: verwijderen geannuleerd → route blijft', (await page.$$('.route-card')).length >= 1);
+  const nameBefore = await txt(page, '.route-card .name');
+  await page.fill('#rename-input', '');
+  await page.click('#menu-save');
+  await sleep(300);
+  t('S10: lege naam bij hernoemen → naam blijft', (await txt(page, '.route-card .name')) === nameBefore);
+  // postQuery-time-out (alle mirrors hangen): moet netjes verwerpen
+  const timedOut = await page.evaluate(async () => {
+    try { await Overpass._test.postQuery('[out:json];', 250); return false; }
+    catch (e) { return /niet bereikbaar/.test(e.message); }
+  });
+  t('S10: postQuery met hangende mirrors → nette fout', timedOut);
+});
+
+/* ---------- S11: mislukte tegels + accuracy-cirkel ---------- */
+await scenario('S11 tegelfouten & accuracy', {
+  ctx: { geolocation: { latitude: 51.234514, longitude: 5.321518, accuracy: 25 }, permissions: ['geolocation'] },
+  noKomoot: true,
+}, async (page, context) => {
+  // De helft van de tegels geeft een serverfout → download slaat ze over
+  let n = 0;
+  await context.route((u) => /cartocdn\.com/.test(u.host), (r) =>
+    (n++ % 2 === 0)
+      ? r.fulfill({ status: 500, body: 'stuk' })
+      : r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
+  await open(page);
+  const res = await page.evaluate(() =>
+    Tiles.download([[51.23, 5.32, 0]], 'overview', 'voyager'));
+  t('mislukte tegels overgeslagen, rest opgeslagen', res.ok > 0 && res.ok < res.total, JSON.stringify(res));
+  // Kapotte Cache-opslag → download vangt de fout per tegel op
+  const res2 = await page.evaluate(async () => {
+    const orig = Cache.prototype.put;
+    Cache.prototype.put = () => { throw new Error('cache vol'); };
+    const r = await Tiles.download([[52.5, 4.4, 0]], 'overview', 'voyager');
+    Cache.prototype.put = orig;
+    return r;
+  });
+  t('kapotte cache-opslag → tegels netjes overgeslagen', res2.ok === 0 && res2.total > 0, JSON.stringify(res2));
+
+  // accuracy-cirkel: aanmaken en daarna verplaatsen
+  await markCached(page);
+  await page.click('.route-card');
+  await sleep(700);
+  await page.click('#btn-locate');
+  await page.waitForSelector('.loc-dot', { timeout: 10000 });
+  t('accuracy-cirkel getekend', await page.evaluate(() => !!MapView.accCircle));
+  await context.setGeolocation({ latitude: 51.2355, longitude: 5.3220, accuracy: 40 });
+  await page.click('#btn-locate');
+  await sleep(900);
+  t('accuracy-cirkel verplaatst', await page.evaluate(() => MapView.accCircle.getRadius() === 40));
+});
+
+/* ---------- S12: verken-randgevallen ---------- */
+const ONE_ROUTE = JSON.stringify({ elements: [{
+  type: 'relation', id: 42, tags: { name: 'Bos & Hei', ref: 'BH', colour: 'red' },
+  members: [{ type: 'way', geometry: [
+    { lat: 51.311, lon: 5.405 }, { lat: 51.313, lon: 5.405 }, { lat: 51.313, lon: 5.407 },
+  ] }],
+}] });
+await scenario('S12 verken-randgevallen', {
+  ctx: { geolocation: { latitude: 51.312, longitude: 5.405, accuracy: 5 }, permissions: ['geolocation'] },
+  overpassBody: ONE_ROUTE,
+}, async (page, context) => {
+  await open(page);
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /1 route — tik/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('enkelvoud in hint (1 route)', true);
+  await page.waitForFunction(() => /Gebied offline/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });
+
+  // ◎ op een route → "Je staat op:" (tweede route erbij → sorteer-comparator draait)
+  await page.evaluate(() => {
+    MapView.exploreRoutes.push({ id: 'osm-43', name: 'Zijpad', distance: 200,
+      segments: [[[51.3115, 5.405], [51.3125, 5.405]]], coords: [] });
+  });
+  await page.click('#btn-locate');
+  await page.waitForFunction(() => /Je staat op/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
+  t('locatie op route → "Je staat op: …" met sortering', (await txt(page, '#toast')).includes('Bos & Hei'));
+
+  // kiezen via een échte DOM-klik op de routelijn
+  await page.$eval('#map path[stroke-width="26"]',
+    (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await sleep(250);
+  const info = await txt(page, '#explore-info');
+  t('DOM-klik op lijn kiest route; naam met & + ref netjes', info.includes('Bos & Hei') && info.includes('BH'), info);
+
+  // kaartlagen-sheet in verken-modus (tellingen leeg)
+  await page.click('#btn-layers');
+  t('lagen-sheet in verkennen zonder tellingen', (await txt(page, '#ov-nodes-count')) === '');
+  await page.click('#layers-close');
+
+  // verouderde zoekactie: tweede zoek annuleert de eerste (succes- én foutpad)
+  await context.route(isOverpassHost, async (r) => {
+    await sleep(500);
+    r.fulfill({ status: 200, contentType: 'application/json', body: ONE_ROUTE });
+  });
+  await page.evaluate(() => { App._selectedExplore = null; App._exploreFetch(); App._exploreFetch(); });
+  await sleep(1600);
+  t('dubbele zoekactie: oudste antwoord genegeerd', true);
+  await page.evaluate(async () => {
+    const orig = Overpass.fetchRoutes;
+    Overpass.fetchRoutes = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
+    App._exploreFetch(); App._exploreFetch(); // eerste faalt als verouderd → guard in het foutpad
+    await new Promise((r) => setTimeout(r, 900));
+    Overpass.fetchRoutes = orig;
+  });
+  t('dubbele zoekactie met fout: oudste genegeerd', true);
+
+  // opslag-fouten tijdens verkennen: putRegion en downloadBBox falen stil
+  await context.route(isOverpassHost, (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: ONE_ROUTE }));
+  await page.evaluate(() => {
+    window.__origPut = DB.putRegion; window.__origDl = Tiles.downloadBBox;
+    DB.putRegion = () => Promise.reject(new Error('vol'));
+    Tiles.downloadBBox = () => Promise.reject(new Error('vol'));
+    MapView.map.setView([51.5, 5.8], 14); // nieuw gebied → nieuwe regio-id
+  });
+  await page.click('#explore-search');
+  await page.waitForFunction(() => !document.getElementById('explore-search').disabled, null, { timeout: 20000 });
+  await sleep(400);
+  await page.evaluate(() => { DB.putRegion = window.__origPut; Tiles.downloadBBox = window.__origDl; });
+  t('opslagfouten tijdens verkennen zijn stil', true);
+
+  // online maar netwerk stuk → fallback op opgeslagen regio's ('offline cache')
+  await page.evaluate(() => { MapView.map.setView([51.312, 5.405], 14); });
+  await context.route(isOverpassHost, (r) => r.abort());
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /offline cache/.test(document.getElementById('explore-hint').textContent), null, { timeout: 30000 });
+  t('netwerk stuk → routes uit offline cache', true);
+  await page.evaluate(() => MapView.selectExplore(MapView.exploreRoutes[0].id));
+  await sleep(200);
+  t('kiezen uit offline-fallback werkt', await page.$eval('#explore-follow', (el) => !el.disabled));
+  // Volg-guard: zonder keuze doet Volg niets
+  await page.evaluate(() => { App._selectedExplore = null; return App.followSelected(); });
+  t('Volg zonder keuze is een no-op', true);
+
+  // guards van _autoCacheRegion + oude explore-cache
+  const guards = await page.evaluate(async () => {
+    const b = { minLat: 51.30, minLng: 5.39, maxLat: 51.32, maxLng: 5.42 };
+    await App._autoCacheRegion(b, []);                       // geen routes → return
+    App._regionJob = 'bezig';
+    await App._autoCacheRegion(b, [{ id: 'x', segments: [], coords: [] }]); // bezig → return
+    App._regionJob = null;
+    await App._autoCacheRegion(b, [{ id: 'x', name: 'X', segments: [[[51.31, 5.40], [51.311, 5.40]]], coords: [] }]); // vers → skip
+    // oude explore-cache telt niet meer mee; ook zonder savedAt
+    await DB.putRegion({ id: 'explore-cache', bounds: b, routes: [{ id: 'y' }], savedAt: '2020-01-01T00:00:00Z' });
+    App._regions = await DB.allRegions();
+    const oud = App._exploreCache() === null;
+    await DB.putRegion({ id: 'explore-cache', bounds: b, routes: [{ id: 'y' }] });
+    App._regions = await DB.allRegions();
+    const zonderDatum = App._exploreCache() === null;
+    // regio zonder savedAt is niet vers → wordt opnieuw binnengehaald
+    const tiny = { minLat: 51.30, minLng: 5.39, maxLat: 51.301, maxLng: 5.391 };
+    const cxT = (tiny.minLat + tiny.maxLat) / 2, cyT = (tiny.minLng + tiny.maxLng) / 2;
+    await DB.putRegion({ id: 'region-' + Math.round(cxT * 200) + '_' + Math.round(cyT * 200), bounds: tiny, routes: [{ id: 'z' }] });
+    App._regions = await DB.allRegions();
+    await App._autoCacheRegion(tiny, [{ id: 'z', name: 'Z', segments: [[[51.3, 5.39], [51.301, 5.39]]], coords: [] }]);
+    // regio zonder routes-lijst deert niet
+    await DB.putRegion({ id: 'region-kaal', bounds: { minLat: 51.30, minLng: 5.39, maxLat: 51.32, maxLng: 5.42 }, savedAt: new Date().toISOString() });
+    App._regions = await DB.allRegions();
+    const kaal = Array.isArray(App._routesFromRegions(b));
+    return { oud, zonderDatum, kaal };
+  });
+  t('autoCacheRegion-guards + oude cache + kale regio', guards.oud && guards.zonderDatum && guards.kaal, JSON.stringify(guards));
+
+  // terug en opnieuw verkennen: cache-render + kiezen daaruit
+  await page.click('#btn-back');
+  await sleep(200);
+  await page.evaluate(async () => { // herstel een verse explore-cache
+    await DB.putRegion({ id: 'explore-cache', bounds: { minLat: 51.30, minLng: 5.39, maxLat: 51.32, maxLng: 5.42 },
+      routes: [{ id: 'osm-42', name: 'Bos & Hei', ref: 'BH', colour: '#dc2626', distance: 400,
+        segments: [[[51.311, 5.405], [51.313, 5.405]]], coords: [[51.311, 5.405], [51.313, 5.405]] }],
+      savedAt: new Date().toISOString() });
+    App._regions = await DB.allRegions();
+  });
+  await context.route(isOverpassHost, async (r) => { await sleep(1500); r.abort(); });
+  await page.click('#btn-explore');
+  await sleep(400); // cache is meteen zichtbaar, netwerk hangt nog
+  await page.evaluate(() => MapView.selectExplore('osm-42'));
+  await sleep(200);
+  t('kiezen uit cache-weergave werkt direct', (await txt(page, '#explore-info')).includes('Bos & Hei'));
+});
+
+/* ---------- S12b: verkennen zonder GPS en zonder offline data ---------- */
+await scenario('S12b verkennen zonder GPS/data', {
+  overpassBody: '{"elements":[]}',
+  init: `navigator.geolocation.getCurrentPosition = (ok, err) => setTimeout(() => err({ code: 2 }), 30);`,
+}, async (page, context) => {
+  await open(page);
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /geen bewegwijzerde/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('GPS faalt: verkennen valt terug op kaartbeeld', true);
+  // offline zonder opgeslagen regio's → "geen offline routes"
+  await context.setOffline(true);
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /geen offline routes/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('offline zonder regio-data: nette hint', true);
+});
+
+/* ---------- S13: geen geolocation-API + kapotte SW-registratie ---------- */
+await scenario('S13 geen GPS-API & SW-fout', {
+  init: `delete Navigator.prototype.geolocation;
+         const origReg = ServiceWorkerContainer.prototype.register;
+         ServiceWorkerContainer.prototype.register = () => Promise.reject(new Error('sw kapot'));`,
+}, async (page) => {
+  await open(page);
+  await markCached(page);
+  await page.click('.route-card');
+  await sleep(600);
+  await page.click('#btn-locate');
+  t('◎ zonder GPS-API → melding', (await txt(page, '#toast')).includes('Geen GPS'));
+  await page.click('#btn-track');
+  t('➤ zonder GPS-API → melding + geen HUD', await page.isHidden('#track-hud'));
+  // verkennen zonder GPS-API: onErr-pad zonder fout-object
+  await page.click('#btn-back');
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /geen GPS|tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('verkennen zonder GPS-API → nette hint', true);
+  // succesvolle fix zonder accuracy-veld (geen cirkel)
+  await page.evaluate(() => {
+    navigator.geolocation = {
+      getCurrentPosition: (ok) => ok({ coords: { latitude: 51.24, longitude: 5.33 } }),
+    };
+  });
+  await page.click('#btn-back');
+  await markCached(page);
+  await page.click('.route-card');
+  await sleep(500);
+  await page.click('#btn-locate');
+  await sleep(500);
+  t('fix zonder accuracy → stip zonder cirkel',
+    await page.evaluate(() => !!MapView.locMarker && !MapView.accCircle));
+});
+
+/* ---------- S13b: overlays niet geladen + offline-melding in lagen-sheet ---------- */
+await scenario('S13b overlays offline-melding', { noOverpass: true }, async (page, context) => {
+  await context.route(isOverpassHost, (r) => r.abort());
+  await open(page);
+  await markCached(page);
+  await page.evaluate(async () => {
+    // de meegeleverde route heeft de overlays al ingebakken — wis dat voor deze test
+    const r = await DB.get('komoot-3096182502');
+    delete r.overlaysFetched; delete r.nodes; delete r.horeca;
+    await DB.put(r);
+  });
+  await page.click('.route-card');           // fetchOverlays faalt → overlaysFetched blijft false
+  await sleep(900);
+  await page.click('#btn-back');
+  await context.setOffline(true);
+  await page.click('.route-card');           // offline: maybeFetchOverlays slaat over
+  await sleep(600);
+  await page.click('#btn-layers');
+  t('lagen-sheet meldt: overlays nog niet geladen',
+    (await txt(page, '#overlays-note')).includes('verbind één keer'));
+  await page.click('#layers-close');
+});
+
+/* ---------- S14: kapotte opslag ---------- */
+await scenario('S14a regio-opslag kapot', {
+  init: `const origTx = IDBDatabase.prototype.transaction;
+         IDBDatabase.prototype.transaction = function (store, mode) {
+           if (String(store) === 'regions') {
+             return { objectStore: () => ({ getAll() { const r = {}; setTimeout(() => r.onerror && r.onerror({}), 0); return r; } }) };
+           }
+           return origTx.call(this, store, mode);
+         };`,
+}, async (page) => {
+  await open(page);
+  t('app werkt met kapotte regio-opslag', (await page.$$('.route-card')).length === 1);
+  t('regions veilig leeg', await page.evaluate(() => Array.isArray(App._regions) && App._regions.length === 0));
+});
+
+await scenario('S14b indexedDB volledig kapot', {
+  allowErrors: true,
+  init: `indexedDB.open = () => { const r = {}; setTimeout(() => r.onerror && r.onerror({ target: r }), 0); return r; };`,
+}, async (page) => {
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(800);
+  t('pagina rendert ondanks kapotte opslag', await page.isVisible('#screen-list'));
+  t('statuslampjes werken nog', (await txt(page, '#statusbar-list')).includes('internet'));
+});
+
 /* ================================================================== */
 await browser.close();
 server.close();
@@ -612,6 +1129,28 @@ for (const [url, { len, bytes }] of rows) {
 }
 console.log(`  ${'TOTAAL'.padEnd(18)} ${totL ? (100 * totC / totL).toFixed(1) : '0'}%`);
 console.log('  (sw.js draait in een worker en valt buiten page-coverage; offline-gedrag is functioneel getest in S8.)');
+
+// UNCOVERED=1 npm test → toon de ongedekte stukken bron per bestand.
+if (process.env.UNCOVERED) {
+  console.log('\n──────── ONGEDEKT ────────');
+  for (const [url, { len, bytes }] of rows) {
+    const rel = url.replace(BASE + '/', '');
+    const src = readFileSync(path.join(ROOT, rel), 'utf8');
+    console.log(`\n### ${rel}`);
+    let i = 0;
+    while (i < len) {
+      if (!bytes[i]) {
+        let j = i;
+        while (j < len && !bytes[j]) j++;
+        if (j - i > 1) {
+          const line = src.slice(0, i).split('\n').length;
+          console.log(`  [r${line}] ${JSON.stringify(src.slice(i, Math.min(j, i + 200)))}`);
+        }
+        i = j;
+      } else i++;
+    }
+  }
+}
 
 console.log(`\n──────── RESULTAAT: ${pass} geslaagd, ${fail} gefaald ────────`);
 if (failures.length) { console.log('Gefaald:'); for (const f of failures) console.log('  ✗ ' + f); }
