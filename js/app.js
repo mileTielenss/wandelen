@@ -336,7 +336,7 @@
       $('offroute-banner').hidden = true;
     },
 
-    async _exploreFetch() {
+    async _exploreFetch(force) {
       const b = MapView.map.getBounds();
       const c = b.getCenter();
       this._lastCenter = [c.lat, c.lng];
@@ -347,9 +347,29 @@
       if ((bounds.maxLat - bounds.minLat) > MAX_SPAN || (bounds.maxLng - bounds.minLng) > MAX_SPAN * 1.7) {
         bounds = Overpass.boundsFromCenter(c.lat, c.lng, 9000);
       }
+      const mySeq = (this._exploreSeq = (this._exploreSeq || 0) + 1);
+
+      // Opslag-eerst: is dit gebied al eens (vers, <30 dagen) opgehaald, gebruik
+      // dan de bewaarde routes — geen internet nodig. “Zoek hier” (force) haalt
+      // wél opnieuw op via het netwerk.
+      if (!force) {
+        const stored = this._routesFromRegions(bounds, true);
+        if (stored.length) {
+          this._exploreRoutes = stored;
+          this._exploreBounds = bounds;
+          if (!this._selectedExplore) {
+            const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
+            const same = stored.length === shownIds.size && stored.every((r) => shownIds.has(r.id));
+            if (!same) MapView.renderExplore(stored, (rt) => this._onExplorePick(rt));
+            $('explore-hint').textContent =
+              `${stored.length} route${stored.length > 1 ? 's' : ''} (opgeslagen) — tik er één aan`;
+          }
+          return;
+        }
+      }
+
       $('explore-hint').textContent = 'routes ophalen…';
       $('explore-search').disabled = true;
-      const mySeq = (this._exploreSeq = (this._exploreSeq || 0) + 1);
       try {
         let routes, fromCache = false;
         if (navigator.onLine) {
@@ -411,6 +431,16 @@
       $('explore-follow').disabled = false;
     },
 
+    // Tik op lege kaart tijdens verkennen: keuze wissen, verder kunnen zoeken.
+    onExploreDeselect() {
+      if (!this._exploreActive) return;
+      this._selectedExplore = null;
+      $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
+      const n = MapView.exploreRoutes.length;
+      $('explore-hint').textContent = `${n} route${n > 1 ? 's' : ''} — tik er één aan`;
+      $('explore-follow').disabled = true;
+    },
+
     onExploreLocate(routesOn) {
       if (!this._exploreActive) return;
       if (routesOn && routesOn.length) {
@@ -442,11 +472,15 @@
       this.openRoute(route.id);
     },
 
-    _routesFromRegions(bounds) {
-      // Offline: neem routes uit opgeslagen regio's die dit gebied overlappen.
+    _routesFromRegions(bounds, freshOnly) {
+      // Routes uit opgeslagen regio's die dit gebied overlappen. Met freshOnly
+      // tellen enkel recent (<30 dagen) opgehaalde regio's mee (opslag-eerst);
+      // zonder telt alles (offline is oude data beter dan geen).
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
       let best = [];
       for (const reg of this._regions) {
+        if (freshOnly &&
+            Date.now() - new Date(reg.savedAt || 0).getTime() > 30 * 24 * 3600 * 1000) continue;
         const rb = reg.bounds;
         if (cx >= rb.minLat && cx <= rb.maxLat && cy >= rb.minLng && cy <= rb.maxLng) {
           best = best.concat(reg.routes || []);
@@ -673,11 +707,12 @@
 
       $('btn-explore').addEventListener('click', () => this.startExplore());
       $('explore-search').addEventListener('click', () => {
-        // Expliciet opnieuw zoeken: wis de vorige keuze zodat het nieuwe resultaat telt.
+        // Expliciet opnieuw zoeken: wis de vorige keuze en haal vers op via het
+        // netwerk (force), ook als er al opgeslagen routes voor dit gebied zijn.
         this._selectedExplore = null;
         $('explore-follow').disabled = true;
         $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
-        this._exploreFetch();
+        this._exploreFetch(true);
       });
       $('explore-follow').addEventListener('click', () => this.followSelected());
 

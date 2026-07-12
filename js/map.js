@@ -230,6 +230,20 @@
       const mpp = (40075016.686 * Math.cos((e.latlng.lat * Math.PI) / 180)) /
         (256 * Math.pow(2, this.map.getZoom()));
       if (best && bestD <= Math.max(30, 28 * mpp)) this.selectExplore(best.id);
+      // Tik op een leeg stuk kaart terwijl er een keuze is → deselecteren,
+      // zodat je verder kan zoeken.
+      else if (this.selectedExploreId) this.deselectExplore();
+    },
+
+    deselectExplore() {
+      this.selectedExploreId = null;
+      for (const rid of Object.keys(this._exploreLayers || {})) {
+        this._exploreLayers[rid].eachLayer((l) => {
+          if (l.options._hit) return;
+          l.setStyle({ weight: 4, opacity: 0.72 }); // originele stijl terug
+        });
+      }
+      if (App.onExploreDeselect) App.onExploreDeselect();
     },
 
     selectExplore(id) {

@@ -34,8 +34,10 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   álle bewegwijzerde wandellussen rond je, elk in **de kleur van de pijltjes** en met de
   **afstand**. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
-  Het verkende gebied (kaart + routes) wordt daarbij **automatisch** offline opgeslagen,
-  zodat je er ook zonder internet nieuwe wandelingen kan kiezen.
+  Tik je op een **leeg stuk kaart**, dan wordt de keuze weer losgelaten en kan je
+  verder zoeken. Het verkende gebied (kaart + routes) wordt **automatisch** offline
+  opgeslagen; kom je er later terug, dan komen de routes **uit die opslag** — zonder
+  internet. **🔄 Zoek hier** haalt ze desgewenst opnieuw vers op.
 - **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
   de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
@@ -96,7 +98,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 209 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 225 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

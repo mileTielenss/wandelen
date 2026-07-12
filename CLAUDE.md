@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (209 asserts) + coverage-rapport
+npm install && npm test         # testsuite (225 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -61,7 +61,9 @@ Route (IndexedDB store `routes`, keyPath `id`):
 Regio (store `regions`): `{ id: 'region-<lat*200>_<lng*200>' | 'explore-cache',
 bounds: {minLat,minLng,maxLat,maxLng}, routes: […], savedAt }`.
 `explore-cache` = laatste verkenresultaat (max 7 dagen); `region-*` = automatisch
-offline opgeslagen verkende gebieden (30 dagen vers).
+offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eerst**:
+`_exploreFetch()` zonder `force` gebruikt verse `region-*`-routes zonder netwerk;
+“Zoek hier” roept `_exploreFetch(true)` aan en gaat wél naar Overpass.
 
 Overig: `localStorage['wandelen-prefs']` = `{ basemap, showNodes, showHoreca }`.
 Cache Storage: `wandelen-app-v3` (shell), `wandelen-tiles-v1` (alle kaartlagen door elkaar,
@@ -89,14 +91,15 @@ sleutel = volledige tegel-URL).
    verkennen met internet = tegels + data op de achtergrond cachen (voortgang in statusbalk).
 5. **Touch-tolerant.** Routes kiezen mag niet pixel-precies hoeven: brede onzichtbare
    raaklijnen (26 px, `_hit: true`) + kaart-brede dichtstbijzijnde-route-fallback (~28 px).
-   Hertekenen van de verkende laag alleen als het resultaat écht verschilt (anders
-   verdwijnt de laag onder de vinger van de gebruiker).
+   Tik op een leeg stuk kaart = **deselecteren** (`MapView.deselectExplore` →
+   `App.onExploreDeselect`). Hertekenen van de verkende laag alleen als het resultaat
+   écht verschilt (anders verdwijnt de laag onder de vinger van de gebruiker).
 6. **Nederlandstalige UI**, komma als decimaalteken ("18,8 km").
 
 ## Tests — 100% coverage is de norm
 
 `tests/run.mjs` = eigen runner (Playwright-core + headless Chromium, geen testframework).
-Scenario's S1–S14: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
+Scenario's S1–S15: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
 Coverage over `js/*.js` staat op **100,0% (byte-niveau)**; hou dat zo:
 
 - Nieuwe code → tests in hetzelfde commit. Draai `UNCOVERED=1 npm test` en dek

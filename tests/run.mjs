@@ -763,10 +763,11 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     Storage.prototype.setItem = origSet; Storage.prototype.getItem = origGet;
     ok('prefs: kapotte opslag → defaults', prefs.basemap === 'voyager');
 
-    // selectExplore vóór er ooit gerenderd is + minDist zonder segmenten
+    // selectExplore/deselectExplore vóór er ooit gerenderd is + minDist zonder segmenten
     MapView._exploreLayers = undefined; MapView.exploreRoutes = [];
     MapView.selectExplore('bestaat-niet');
-    ok('selectExplore zonder lagen is veilig', true);
+    MapView.deselectExplore();          // ook veilig zonder lagen; App-guard (niet in verkennen) dekt af
+    ok('selectExplore/deselectExplore zonder lagen is veilig', true);
     ok('minDistToSegments zonder segmenten → Infinity', Geo.minDistToSegments([51, 5], undefined) === Infinity);
 
     // succesvolle fix vóór de kaart een zoomniveau heeft (getZoom() undefined)
@@ -901,6 +902,26 @@ await scenario('S12 verken-randgevallen', {
   t('enkelvoud in hint (1 route)', true);
   await page.waitForFunction(() => /Gebied offline/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });
 
+  // kiezen via een échte DOM-klik op de routelijn (met correcte klik-coördinaten,
+  // zodat de kaart-brede fallback dezelfde route kiest i.p.v. te deselecteren)
+  await page.evaluate(() => {
+    const pt = MapView.map.latLngToContainerPoint([51.312, 5.405]);
+    const rect = document.getElementById('map').getBoundingClientRect();
+    document.querySelector('#map path[stroke-width="26"]').dispatchEvent(
+      new MouseEvent('click', { bubbles: true, clientX: rect.left + pt.x, clientY: rect.top + pt.y }));
+  });
+  await sleep(250);
+  const info = await txt(page, '#explore-info');
+  t('DOM-klik op lijn kiest route; naam met & + ref netjes', info.includes('Bos & Hei') && info.includes('BH'), info);
+
+  // tik op leeg stuk kaart → deselecteren (enkelvoud-hint), verder zoeken kan
+  await page.evaluate(() => MapView.map.fire('click', { latlng: L.latLng(51.35, 5.45) }));
+  await sleep(200);
+  t('lege-kaart-tik deselecteert', await page.evaluate(() => MapView.selectedExploreId === null));
+  t('info terug naar zoekstand', (await txt(page, '#explore-info')).includes('Routes in de buurt'));
+  t('hint enkelvoud na deselect', (await txt(page, '#explore-hint')).includes('1 route — tik'));
+  t('Volg weer uit', await page.$eval('#explore-follow', (el) => el.disabled));
+
   // ◎ op een route → "Je staat op:" (tweede route erbij → sorteer-comparator draait)
   await page.evaluate(() => {
     MapView.exploreRoutes.push({ id: 'osm-43', name: 'Zijpad', distance: 200,
@@ -909,13 +930,6 @@ await scenario('S12 verken-randgevallen', {
   await page.click('#btn-locate');
   await page.waitForFunction(() => /Je staat op/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
   t('locatie op route → "Je staat op: …" met sortering', (await txt(page, '#toast')).includes('Bos & Hei'));
-
-  // kiezen via een échte DOM-klik op de routelijn
-  await page.$eval('#map path[stroke-width="26"]',
-    (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-  await sleep(250);
-  const info = await txt(page, '#explore-info');
-  t('DOM-klik op lijn kiest route; naam met & + ref netjes', info.includes('Bos & Hei') && info.includes('BH'), info);
 
   // kaartlagen-sheet in verken-modus (tellingen leeg)
   await page.click('#btn-layers');
@@ -927,13 +941,13 @@ await scenario('S12 verken-randgevallen', {
     await sleep(500);
     r.fulfill({ status: 200, contentType: 'application/json', body: ONE_ROUTE });
   });
-  await page.evaluate(() => { App._selectedExplore = null; App._exploreFetch(); App._exploreFetch(); });
+  await page.evaluate(() => { App._selectedExplore = null; App._exploreFetch(true); App._exploreFetch(true); });
   await sleep(1600);
   t('dubbele zoekactie: oudste antwoord genegeerd', true);
   await page.evaluate(async () => {
     const orig = Overpass.fetchRoutes;
     Overpass.fetchRoutes = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
-    App._exploreFetch(); App._exploreFetch(); // eerste faalt als verouderd → guard in het foutpad
+    App._exploreFetch(true); App._exploreFetch(true); // eerste faalt als verouderd → guard in het foutpad
     await new Promise((r) => setTimeout(r, 900));
     Overpass.fetchRoutes = orig;
   });
@@ -992,9 +1006,13 @@ await scenario('S12 verken-randgevallen', {
     await DB.putRegion({ id: 'region-kaal', bounds: { minLat: 51.30, minLng: 5.39, maxLat: 51.32, maxLng: 5.42 }, savedAt: new Date().toISOString() });
     App._regions = await DB.allRegions();
     const kaal = Array.isArray(App._routesFromRegions(b));
-    return { oud, zonderDatum, kaal };
+    await DB.putRegion({ id: 'region-oud', bounds: { minLat: 40, minLng: 4, maxLat: 40.1, maxLng: 4.1 },
+      routes: [{ id: 'o' }], savedAt: '2020-01-01T00:00:00Z' });
+    App._regions = await DB.allRegions();
+    const oudGeenVerseBron = App._routesFromRegions({ minLat: 40, minLng: 4, maxLat: 40.1, maxLng: 4.1 }, true).length === 0;
+    return { oud, zonderDatum, kaal, oudGeenVerseBron };
   });
-  t('autoCacheRegion-guards + oude cache + kale regio', guards.oud && guards.zonderDatum && guards.kaal, JSON.stringify(guards));
+  t('autoCacheRegion-guards + oude cache + kale regio', guards.oud && guards.zonderDatum && guards.kaal && guards.oudGeenVerseBron, JSON.stringify(guards));
 
   // terug en opnieuw verkennen: cache-render + kiezen daaruit
   await page.click('#btn-back');
@@ -1111,6 +1129,71 @@ await scenario('S14b indexedDB volledig kapot', {
   await sleep(800);
   t('pagina rendert ondanks kapotte opslag', await page.isVisible('#screen-list'));
   t('statuslampjes werken nog', (await txt(page, '#statusbar-list')).includes('internet'));
+});
+
+/* ---------- S15: deselecteren & opslag-eerst verkennen ---------- */
+await scenario('S15 deselecteren & opslag-eerst', {
+  ctx: { geolocation: { latitude: 51.312, longitude: 5.41 }, permissions: ['geolocation'] },
+  noOverpass: true,
+}, async (page, context) => {
+  let netCalls = 0;
+  await context.route(isOverpassHost, (r) => {
+    netCalls++;
+    r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
+  });
+  await open(page);
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('eerste verkenning gebruikt internet', netCalls >= 1, String(netCalls));
+  await page.waitForFunction(() => /Gebied offline/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });
+
+  // selecteren en weer deselecteren via een lege plek (meervoud-tak)
+  await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
+  await sleep(200);
+  t('keuze actief', await page.$eval('#explore-follow', (el) => !el.disabled));
+  await page.evaluate(() => MapView.map.fire('click', { latlng: L.latLng(52.0, 6.5) }));
+  await sleep(200);
+  t('deselect: keuze weg + stijl hersteld', await page.evaluate(() =>
+    MapView.selectedExploreId === null &&
+    (() => { let w = 0; MapView._exploreLayers[Object.keys(MapView._exploreLayers)[0]]
+      .eachLayer((l) => { if (!l.options._hit) w = l.options.weight; }); return w === 4; })()));
+  t('hint terug naar meervoud', (await txt(page, '#explore-hint')).includes('routes — tik er één aan'));
+  // nogmaals op leeg tikken zonder keuze: niets kapot
+  await page.evaluate(() => MapView.map.fire('click', { latlng: L.latLng(52.0, 6.5) }));
+  t('lege tik zonder keuze is no-op', await page.evaluate(() => MapView.selectedExploreId === null));
+
+  // opslag-eerst: opnieuw verkennen gebruikt GEEN internet meer.
+  // Verouder de explore-cache zodat de routes écht uit de regio-opslag
+  // gerenderd worden (en niet al op de kaart voorgetekend staan).
+  await page.click('#btn-back');
+  await sleep(200);
+  await page.evaluate(async () => {
+    const regs = await DB.allRegions();
+    const ec = regs.find((r) => r.id === 'explore-cache');
+    ec.savedAt = '2020-01-01T00:00:00Z';
+    await DB.putRegion(ec);
+    App._regions = await DB.allRegions();
+  });
+  const before = netCalls;
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /opgeslagen/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('tweede verkenning komt uit opslag (hint)', true);
+  t('tweede verkenning gebruikt geen internet', netCalls === before, `${before} → ${netCalls}`);
+  t('routes zichtbaar uit opslag', (await page.$$('#map .leaflet-overlay-pane path')).length > 3);
+  await page.evaluate(() => MapView.selectExplore(MapView.exploreRoutes[0].id));
+  await sleep(200);
+  t('kiezen uit opslag-weergave werkt', await page.$eval('#explore-follow', (el) => !el.disabled));
+
+  // “Zoek hier” forceert wél een verse netwerk-zoekactie
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /route.*tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('Zoek hier forceert netwerk', netCalls > before, `${before} → ${netCalls}`);
+
+  // offline + force → routes uit opslag met (offline)-label
+  await context.setOffline(true);
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /\(offline\)/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('offline geforceerd zoeken → opgeslagen routes (offline)', true);
 });
 
 /* ================================================================== */
