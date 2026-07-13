@@ -29,6 +29,9 @@
       opts = opts || {};
       this.map = L.map('map', {
         zoomControl: false,
+        // Canvas i.p.v. SVG: honderden routelijnen = één canvas i.p.v. honderden
+        // DOM-nodes → merkbaar vloeiender pannen/zoomen op een telefoon.
+        preferCanvas: true,
         // Geen tegel-banner op de kaart; de bronvermelding staat in het ℹ️-scherm.
         attributionControl: false,
         // Zuinig: geen vloeiende zoom-animaties nodig

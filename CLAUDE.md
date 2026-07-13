@@ -94,17 +94,22 @@ sleutel = volledige tegel-URL).
    "volgt" pas bij een echte GPS-fix. (`App._wrapFetch` telt externe requests.)
 4. **Alles automatisch.** Geen handmatige download-knoppen: route openen of gebied
    verkennen met internet = tegels + data op de achtergrond cachen (voortgang in statusbalk).
-5. **Touch-tolerant.** Routes kiezen mag niet pixel-precies hoeven: brede onzichtbare
+5. **Zuinig renderen.** Kaartvectoren via canvas (één element i.p.v. honderden
+   SVG-nodes); statusbalk-DOM alleen herschrijven als de inhoud echt wijzigt.
+6. **Touch-tolerant.** Routes kiezen mag niet pixel-precies hoeven: brede onzichtbare
    raaklijnen (26 px, `_hit: true`) + kaart-brede dichtstbijzijnde-route-fallback (~28 px).
    Tik op een leeg stuk kaart = **deselecteren** (`MapView.deselectExplore` →
    `App.onExploreDeselect`). Hertekenen van de verkende laag alleen als het resultaat
    écht verschilt (anders verdwijnt de laag onder de vinger van de gebruiker).
-6. **Nederlandstalige UI**, komma als decimaalteken ("18,8 km").
+7. **Nederlandstalige UI**, komma als decimaalteken ("18,8 km").
 
 ## Tests — 100% coverage is de norm
 
 `tests/run.mjs` = eigen runner (Playwright-core + headless Chromium, geen testframework).
 Scenario's S1–S15: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
+`tests/fixtures/area-real.json` = **bevroren écht Overpass-antwoord** (Hageven, incl.
+null-punten en alle rariteiten) waar de parsers elke run tegen draaien; ververs hem
+met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de parsers.
 Coverage over `js/*.js` staat op **100,0% (byte-niveau)**; hou dat zo:
 
 - Nieuwe code → tests in hetzelfde commit. Draai `UNCOVERED=1 npm test` en dek
@@ -127,6 +132,11 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
   een test het "nog niet geladen"-pad nodig heeft.
 - Playwright-`geolocation` geeft standaard `accuracy: 0` → geef expliciet
   `accuracy` mee om de nauwkeurigheidscirkel te testen.
+- De kaart rendert met **canvas** (`preferCanvas: true`) — er zijn géén SVG-paths
+  om op te asserten of te klikken; controleer laag-objecten via `evaluate` en klik
+  met `page.mouse.click` op containerpunt-coördinaten.
+- `page.evaluate(() => MapView.map.fire(...))` e.d. geven het **map-object** terug →
+  "Cannot serialize result". Wikkel Leaflet-aanroepen in `{ }` zodat er niets terugkeert.
 - **`out geom(bbox)` levert `null`-punten** voor way-geometrie buiten het
   zoekgebied (heeft in productie de verkenfunctie gebroken — fixtures waren te
   schoon). `parseRoutes` splitst ways op die gaten; test nieuwe parsers altijd

@@ -72,9 +72,14 @@
       const html =
         `<span class="stat"><span class="sdot ${netDot}"></span>${netLabel}</span>` +
         `<span class="stat"><span class="sdot ${gpsDot}"></span>${gpsLabel}</span>` + tile;
-      const a = $('statusbar-list'), b = $('statusbar-map');
-      if (a) a.innerHTML = html;
-      if (b) b.innerHTML = html;
+      // Alleen naar de DOM schrijven als er echt iets wijzigt: tijdens een
+      // tegel-download wisselt de request-teller duizenden keren zonder dat
+      // de tekst verandert — die hertekeningen kosten enkel batterij.
+      if (html !== this._statusHtml) {
+        this._statusHtml = html;
+        $('statusbar-list').innerHTML = html;
+        $('statusbar-map').innerHTML = html;
+      }
       // Eerlijke HUD-tekst: geen "live tracking" claimen zonder echte fix.
       if (tracking && gps === 'searching') $('track-text').textContent = 'GPS-signaal zoeken…';
       if (tracking && gps === 'denied') $('track-text').textContent = 'GPS geweigerd';
