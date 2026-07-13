@@ -163,8 +163,13 @@
     },
 
     recenter() {
-      if (this.exploreMode && this.exploreGroup) {
-        try { this.map.fitBounds(this.exploreGroup.getBounds(), { padding: [40, 40] }); } catch (_) {}
+      if (this.exploreMode) {
+        // Alles staat al in beeld; ⤢ zoomt hier naar de gekozen route.
+        const grp = this._exploreLayers && this._exploreLayers[this.selectedExploreId];
+        if (grp) {
+          const b = grp.getBounds();
+          if (b.isValid()) this.map.fitBounds(b, { padding: [40, 40] });
+        }
         return;
       }
       if (this.line) this.map.fitBounds(this.line.getBounds(), { padding: [40, 40] });
@@ -297,7 +302,10 @@
           this._updateLocation(pos, false);
           const ll = [pos.coords.latitude, pos.coords.longitude];
           const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
-          this.map.setView(ll, z, { animate: true });
+          // Zonder animatie: de zoekactie die hierna volgt leest meteen de
+          // kaartgrenzen — tijdens een animatie zijn die nog de oude, waardoor
+          // er naast je locatie gezocht werd.
+          this.map.setView(ll, z, { animate: false });
           // Eenmalige meting klaar → GPS-hardware staat weer uit, dus lampje uit.
           this._setGps('off');
           if (onFix) onFix(pos);

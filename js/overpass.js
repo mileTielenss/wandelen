@@ -198,10 +198,11 @@
   }
 
   /** Eén gecombineerde gebieds-query: knooppunten + horeca (out center) én
-      bewegwijzerde wandelroutes (out geom, geclipt) in één aanvraag — dat
-      halveert de belasting op de Overpass-mirrors. Routes: lokale lussen
-      (lwn) én regionale Wanderwege (rwn, gangbaar in Duitsland) of routes
-      zonder network-tag; het BE/NL-knooppuntennet
+      bewegwijzerde wandelroutes in één aanvraag. Routes komen VOLLEDIG terug
+      (out geom zonder clip): raakt een route ook maar met één hoekje het
+      scherm, dan krijg je heel het traject — belangrijk bij het volgen.
+      Lokale lussen (lwn) én regionale Wanderwege (rwn, gangbaar in
+      Duitsland) of routes zonder network-tag; het BE/NL-knooppuntennet
       (network:type=node_network) blijft er expliciet uit. */
   function areaQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
@@ -213,7 +214,7 @@
       `);out center qt;(` +
       `rel["route"~"^(hiking|foot|walking)$"]["network"~"^(lwn|rwn)$"]["network:type"!="node_network"](${bbox});` +
       `rel["route"~"^(hiking|foot|walking)$"][!"network"](${bbox});` +
-      `);out geom(${bbox}) qt;`;
+      `);out geom qt;`;
   }
 
   /** Alles van een gebied in één keer: { routes, nodes, horeca }. */

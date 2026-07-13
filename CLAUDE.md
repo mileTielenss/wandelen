@@ -41,6 +41,11 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 
 `vendor/leaflet/` is Leaflet 1.9.4, **lokaal meegeleverd** (offline-eis: geen CDN).
 `data/default-route.json` is de vooraf ingebakken route incl. `nodes`/`horeca`.
+`data/be-overlays.json` (±2,7 MB) = álle knooppunten + horeca van België; wordt bij
+eerste verkenning lazy opgehaald en als regio `be-overlays` in IndexedDB gezet
+(`App._ensureCountryOverlays`). Renderen is gecapt op de ~400 dichtstbijzijnde per
+soort (`_renderAreaOverlays`) — anders sterft de DOM in een stadscentrum. Herbouwen:
+zelfde Overpass-queries als `tests/refresh-fixture.mjs` maar met `area(3600052411)`.
 Iconen in `icons/` zijn statisch gegenereerd (pure-Python PNG-writer; eenmalig).
 
 ### Dataformaten
@@ -79,7 +84,9 @@ sleutel = volledige tegel-URL).
 | Dienst | Gebruik | Let op |
 |---|---|---|
 | `api.komoot.de/v007/tours/<id>?_embedded=coordinates&share_token=…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
-| Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie geclipt met `out geom(bbox)`, afstand bij voorkeur uit de `distance`-tag) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
+| Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
+traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
+`distance`-tag) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
 | Carto Voyager `@2x` (standaard), Esri World Imagery, OpenTopoMap | kaarttegels | Vaste subdomeinen (geen `{s}`) zodat cache-URL's deterministisch zijn. **Fair use**: nooit bulk (heel België ≈ 20 GB — bewust niet ondersteund; corridor/regio volstaat) |
 
 ## Ontwerpprincipes (niet breken)
@@ -106,7 +113,7 @@ sleutel = volledige tegel-URL).
 ## Tests — 100% coverage is de norm
 
 `tests/run.mjs` = eigen runner (Playwright-core + headless Chromium, geen testframework).
-Scenario's S1–S15: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
+Scenario's S1–S17: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
 `tests/fixtures/area-real.json` = **bevroren écht Overpass-antwoord** (Hageven, incl.
 null-punten en alle rariteiten) waar de parsers elke run tegen draaien; ververs hem
 met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de parsers.
@@ -141,6 +148,12 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
   zoekgebied (heeft in productie de verkenfunctie gebroken — fixtures waren te
   schoon). `parseRoutes` splitst ways op die gaten; test nieuwe parsers altijd
   óók tegen een echt Overpass-antwoord, niet enkel tegen handgemaakte fixtures.
+- **`setView` met animatie + meteen `getBounds()` = oude grenzen** — de zoekactie
+  na een GPS-fix zocht daardoor naast je locatie. Locatie-sprongen doen we met
+  `animate: false`.
+- De **service worker cachet 200-antwoorden** van eigen bestanden (SWR): een test
+  die per aanroep ander gedrag wil, moet met het niet-gecachete geval (bv. 404)
+  beginnen.
 
 ## Service worker & updates
 

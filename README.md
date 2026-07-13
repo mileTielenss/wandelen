@@ -26,16 +26,17 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Scherpe kaart + kaartlagen** (🗺-knop): kies tussen **Kaart — scherp** (@2x-tegels,
   haarscherp op retina, ook uitgezoomd), **Satelliet** (luchtfoto) en **Topografisch**
   (hoogtelijnen). Je keuze blijft bewaard.
-- **Wandelknooppunten**: de genummerde knooppunten worden als badges getoond (bv. **71**)
-  — bij een geopende route de knooppunten die je route volgt, en tijdens **Nieuwe
-  wandeling** álle knooppunten van het gebied, zodat je op de bordjes-nummers kan
-  zoeken. Aan/uit via 🗺.
-- **Horeca (☕)**: cafés, restaurants, snackbars en bakkers staan als koffie-icoontjes op
-  de kaart — langs je route én in het verkende gebied. Standaard aan; aan/uit via 🗺.
+- **Wandelknooppunten & horeca van heel België ingebouwd**: alle 12.000+ knooppunten
+  en 34.000+ horecazaken van het land zitten als compact databestand (±2,7 MB) in de
+  app en worden bij het eerste gebruik lokaal opgeslagen — daarna **nooit meer wachten
+  of internet nodig** hiervoor, waar je ook bent in België. Knooppunten verschijnen als
+  badges (bv. **71**), horeca als ☕; per scherm worden de ~400 dichtstbijzijnde
+  getekend. Aan/uit via 🗺. (Buiten België komen ze per gebied via OpenStreetMap.)
 - **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): opent een kaart met
   álle bewegwijzerde wandelroutes rond je, elk in **de kleur van de pijltjes** en met de
-  **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege; bij lange
-  trajecten wordt de officiële afstand getoond). Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
+  **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege). Routes
+  komen altijd **volledig** binnen: raakt een traject ook maar met één hoekje je
+  scherm, dan krijg je heel de route, met de officiële afstand. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
   Tik je op een **leeg stuk kaart**, dan wordt de keuze weer losgelaten en kan je
   verder zoeken. Het verkende gebied (kaart + routes) wordt **automatisch** offline
@@ -101,7 +102,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 247 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 262 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

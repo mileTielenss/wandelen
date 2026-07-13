@@ -298,6 +298,7 @@
       this._setExploreChrome(true);
       MapView.invalidate();
       MapView.enterExplore();
+      this._ensureCountryOverlays();
       $('explore-bar').hidden = false;
       $('explore-follow').disabled = true;
       $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
@@ -308,7 +309,7 @@
         this._exploreRoutes = cache.routes;
         this._exploreBounds = cache.bounds;
         MapView.renderExplore(cache.routes, (rt) => this._onExplorePick(rt));
-        MapView.renderExploreOverlays(cache.nodes || [], cache.horeca || []);
+        this._renderAreaOverlays({ nodes: cache.nodes || [], horeca: cache.horeca || [] }, cache.bounds);
         $('explore-hint').textContent = `${cache.routes.length} routes (vorige zoekactie) — locatie bepalen…`;
       } else {
         $('explore-hint').textContent = 'locatie bepalen…';
@@ -339,6 +340,8 @@
 
     _setExploreChrome(on) {
       $('btn-track').hidden = on;
+      // ⤢ heeft in verkennen pas zin als er een route gekozen is.
+      $('btn-recenter').hidden = on;
       $('offroute-banner').hidden = true;
     },
 
@@ -363,8 +366,7 @@
         if (stored.length) {
           this._exploreRoutes = stored;
           this._exploreBounds = bounds;
-          const ov = this._overlaysFromRegions(bounds);
-          MapView.renderExploreOverlays(ov.nodes, ov.horeca);
+          this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
           if (!this._selectedExplore) {
             const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
             const same = stored.length === shownIds.size && stored.every((r) => shownIds.has(r.id));
@@ -401,7 +403,7 @@
           routes.length === shownIds.size && routes.every((r) => shownIds.has(r.id));
         this._exploreRoutes = routes;
         this._exploreBounds = bounds;
-        MapView.renderExploreOverlays(overlays.nodes, overlays.horeca);
+        this._renderAreaOverlays(overlays, bounds);
         // Niet hertekenen over een gemaakte keuze heen.
         if (!this._selectedExplore) {
           if (!sameAsShown) MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
@@ -428,8 +430,7 @@
           this._exploreRoutes = fallback;
           this._exploreBounds = bounds;
           MapView.renderExplore(fallback, (rt) => this._onExplorePick(rt));
-          const ovF = this._overlaysFromRegions(bounds);
-          MapView.renderExploreOverlays(ovF.nodes, ovF.horeca);
+          this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
           $('explore-hint').textContent = `${fallback.length} routes (offline cache) — tik er één aan`;
         } else if (!this._selectedExplore) {
           $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
@@ -441,6 +442,7 @@
 
     _onExplorePick(rt) {
       this._selectedExplore = rt;
+      $('btn-recenter').hidden = false;
       const strong = $('explore-info').querySelector('strong');
       strong.innerHTML = `<span class="swatch" style="background:${rt._col}"></span>` +
         escapeHtmlApp(rt.name);
@@ -452,6 +454,7 @@
     onExploreDeselect() {
       if (!this._exploreActive) return;
       this._selectedExplore = null;
+      $('btn-recenter').hidden = true;
       $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
       const n = MapView.exploreRoutes.length;
       $('explore-hint').textContent = `${n} route${n > 1 ? 's' : ''} — tik er één aan`;
@@ -508,24 +511,68 @@
       return best.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
     },
 
-    // Knooppunten + horeca uit alle opgeslagen regio's die dit gebied overlappen.
+    // Knooppunten + horeca uit alle opgeslagen regio's die dit gebied overlappen,
+    // gefilterd op het zoekgebied (de landdekkende records zijn véél groter).
     _overlaysFromRegions(bounds) {
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
+      const inB = (p) => p.lat >= bounds.minLat && p.lat <= bounds.maxLat &&
+        p.lng >= bounds.minLng && p.lng <= bounds.maxLng;
       const nodes = [], horeca = [];
       const seenN = new Set(), seenH = new Set();
       for (const reg of this._regions) {
         const rb = reg.bounds;
         if (!(cx >= rb.minLat && cx <= rb.maxLat && cy >= rb.minLng && cy <= rb.maxLng)) continue;
         for (const n of reg.nodes || []) {
+          if (!inB(n)) continue;
           const k = n.ref + '@' + n.lat.toFixed(4) + ',' + n.lng.toFixed(4);
           if (!seenN.has(k)) { seenN.add(k); nodes.push(n); }
         }
         for (const h of reg.horeca || []) {
+          if (!inB(h)) continue;
           const k = h.n + '@' + h.lat.toFixed(4) + ',' + h.lng.toFixed(4);
           if (!seenH.has(k)) { seenH.add(k); horeca.push(h); }
         }
       }
       return { nodes, horeca };
+    },
+
+    // Meer dan ~400 markers per soort tekent geen enkel scherm vlot; hou de
+    // dichtstbijzijnde bij het midden van het zoekgebied.
+    _renderAreaOverlays(ov, bounds) {
+      const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
+      const CAP = 400;
+      const d2 = (p) => (p.lat - cx) * (p.lat - cx) + (p.lng - cy) * (p.lng - cy);
+      const cap = (list) => {
+        if (list.length <= CAP) return list;
+        return list.slice().sort((x, y) => d2(x) - d2(y)).slice(0, CAP);
+      };
+      MapView.renderExploreOverlays(cap(ov.nodes), cap(ov.horeca));
+    },
+
+    // Eenmalig: de meegeleverde knooppunten + horeca van heel België (±2,7 MB)
+    // in de lokale opslag zetten. Daarna nooit meer wachten op Overpass hiervoor.
+    async _ensureCountryOverlays() {
+      if (this._beJob || !navigator.onLine) return;
+      if (this._regions.some((r) => r.id === 'be-overlays')) return;
+      this._beJob = true;
+      try {
+        const res = await fetch('data/be-overlays.json');
+        if (!res.ok) return;
+        const d = await res.json();
+        await DB.putRegion({
+          id: 'be-overlays', name: 'België: knooppunten & horeca',
+          bounds: d.bounds, routes: [], nodes: d.nodes, horeca: d.horeca,
+          savedAt: new Date().toISOString(),
+        });
+        this._regions = await DB.allRegions();
+        this.toast('Knooppunten & horeca van heel België offline ✓');
+        // Meteen tonen in het lopende zoekbeeld — maar alleen als er echt iets
+        // bijkwam (anders wissen we net getekende overlays in een race).
+        if ((d.nodes.length || d.horeca.length) && this._exploreActive && this._exploreBounds) {
+          this._renderAreaOverlays(this._overlaysFromRegions(this._exploreBounds), this._exploreBounds);
+        }
+      } catch (_) { /* volgende keer opnieuw */ }
+      finally { this._beJob = false; }
     },
 
     // ---------- Hernoem / verwijder menu ----------
@@ -751,6 +798,7 @@
         // netwerk (force), ook als er al opgeslagen routes voor dit gebied zijn.
         this._selectedExplore = null;
         $('explore-follow').disabled = true;
+        $('btn-recenter').hidden = true;
         $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
         this._exploreFetch(true);
       });

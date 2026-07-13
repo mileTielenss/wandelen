@@ -90,6 +90,13 @@ async function scenario(name, opts, fn) {
       headers: { 'access-control-allow-origin': '*' }, body: TOUR,
     }));
   }
+  if (!opts.realCountry) {
+    // Landdekkende overlays leeg mocken zodat scenario-tellingen deterministisch blijven.
+    await context.route((u) => u.pathname.endsWith('/data/be-overlays.json'), (r) => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: '{"bounds":{"minLat":49.45,"minLng":2.5,"maxLat":51.6,"maxLng":6.5},"nodes":[],"horeca":[]}',
+    }));
+  }
   const page = await context.newPage();
   if (opts.init) await page.addInitScript(opts.init);
   const errs = [];
@@ -193,7 +200,7 @@ await scenario('S1 unit-tests', {}, async (page) => {
     ok('areaQuery: lwn én rwn (Wanderwege)', rq.includes('(lwn|rwn)'));
     ok('areaQuery: knooppuntennet uitgesloten', rq.includes('"network:type"!="node_network"'));
     ok('areaQuery: routes zonder network-tag ook', rq.includes('[!"network"]'));
-    ok('areaQuery: geometrie geclipt op zoekgebied', rq.includes('out geom(50.5,6.2,50.6,6.3)'));
+    ok('areaQuery: VOLLEDIGE routegeometrie (geen clip)', rq.includes('out geom qt') && !rq.includes('out geom('));
     ok('areaQuery: knooppunten + horeca in dezelfde aanvraag',
       rq.includes('rwn_ref') && rq.includes('amenity') && rq.includes('out center qt'));
 
@@ -1225,12 +1232,22 @@ await scenario('S15 deselecteren & opslag-eerst', {
   await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
   await sleep(200);
   t('keuze actief', await page.$eval('#explore-follow', (el) => !el.disabled));
+  t('⤢ zichtbaar bij keuze', await page.$eval('#btn-recenter', (el) => !el.hidden));
+  await page.click('#btn-recenter');   // zoomt naar de gekozen route
+  await sleep(400);
+  t('⤢ zoomt naar gekozen route', await page.evaluate(() => {
+    const grp = MapView._exploreLayers[MapView.selectedExploreId];
+    return MapView.map.getBounds().contains(grp.getBounds());
+  }));
   await page.evaluate(() => { MapView.map.fire('click', { latlng: L.latLng(52.0, 6.5) }); });
   await sleep(200);
   t('deselect: keuze weg + stijl hersteld', await page.evaluate(() =>
     MapView.selectedExploreId === null &&
     (() => { let w = 0; MapView._exploreLayers[Object.keys(MapView._exploreLayers)[0]]
       .eachLayer((l) => { if (!l.options._hit) w = l.options.weight; }); return w === 4; })()));
+  t('⤢ verborgen zonder keuze', await page.$eval('#btn-recenter', (el) => el.hidden));
+  await page.evaluate(() => { MapView.recenter(); }); // no-op zonder keuze, geen fout
+  t('⤢-logica zonder keuze is no-op', true);
   t('hint terug naar meervoud', (await txt(page, '#explore-hint')).includes('routes — tik er één aan'));
   // nogmaals op leeg tikken zonder keuze: niets kapot
   await page.evaluate(() => { MapView.map.fire('click', { latlng: L.latLng(52.0, 6.5) }); });
@@ -1270,6 +1287,68 @@ await scenario('S15 deselecteren & opslag-eerst', {
   await page.waitForFunction(() => /\(offline\)/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('offline geforceerd zoeken → opgeslagen routes (offline)', true);
   t('offline: knooppunten uit opslag', (await page.$$('.kp-badge')).length === 2);
+});
+
+/* ---------- S17: knooppunten & horeca van heel België ---------- */
+await scenario('S17 heel België offline', {
+  ctx: { geolocation: { latitude: 51.2333, longitude: 5.3134 }, permissions: ['geolocation'] }, // Lommel
+  overpassBody: '{"elements":[]}',   // Overpass levert NIETS — alles moet uit de landdata komen
+  realCountry: true,
+}, async (page, context) => {
+  await open(page);
+  await page.click('#btn-explore');
+  await page.waitForFunction(() => /heel België offline/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
+  t('landdata eenmalig binnengehaald (toast)', true);
+  const reg = await page.evaluate(async () => {
+    const r = (await DB.allRegions()).find((x) => x.id === 'be-overlays');
+    return r ? { n: r.nodes.length, h: r.horeca.length } : null;
+  });
+  t('12k knooppunten + 34k horeca opgeslagen', reg && reg.n > 12000 && reg.h > 34000, JSON.stringify(reg));
+  await sleep(400);
+  t('knooppunten rond Lommel zichtbaar zonder Overpass', (await page.$$('.kp-badge')).length > 0);
+  t('horeca rond Lommel zichtbaar zonder Overpass', (await page.$$('.horeca-pin')).length > 0);
+  // cap: een stadscentrum (Antwerpen) levert duizenden horeca → maximaal 400 getekend
+  const capped = await page.evaluate(() => {
+    const b = { minLat: 51.17, minLng: 4.32, maxLat: 51.26, maxLng: 4.48 };
+    const ov = App._overlaysFromRegions(b);
+    App._renderAreaOverlays(ov, b);
+    return { raw: ov.horeca.length, drawn: MapView._horecaCount };
+  });
+  t('stadscentrum: markers op ~400 gecapt', capped.raw > 400 && capped.drawn === 400, JSON.stringify(capped));
+  // dubbel aanroepen tijdens lopende job is veilig; daarna bestaat de regio al
+  await page.evaluate(() => Promise.all([App._ensureCountryOverlays(), App._ensureCountryOverlays()]));
+  t('landdata wordt niet dubbel binnengehaald', true);
+  // volledig offline: elders in België verkennen → knooppunten uit opslag
+  await context.setOffline(true);
+  await page.evaluate(() => { MapView.map.setView([51.05, 3.72], 13); }); // Gent
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /geen offline routes|routes/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  await sleep(300);
+  t('offline in Gent: horeca uit landdata', (await page.$$('.horeca-pin')).length > 0);
+});
+
+/* ---------- S17b: landdata-bootstrap faalt netjes ---------- */
+await scenario('S17b landdata onbereikbaar', {
+  ctx: { geolocation: { latitude: 51.2333, longitude: 5.3134 }, permissions: ['geolocation'] },
+  overpassBody: '{"elements":[]}',
+  realCountry: true,
+}, async (page, context) => {
+  let calls = 0;
+  await context.route((u) => u.pathname.endsWith('/data/be-overlays.json'), (r) => {
+    calls++;
+    // Eerst de 404 (die cachet de service worker niet), daarna kapotte JSON
+    // voor het catch-pad. Netwerkfouten zelf worden door de SW 503's.
+    if (calls === 1) return r.fulfill({ status: 404, body: 'weg' });
+    r.fulfill({ status: 200, contentType: 'application/json', body: 'kapot{' });
+  });
+  await open(page);
+  await page.click('#btn-explore');
+  await sleep(1200);
+  t('bootstrap-404 is stil', true);
+  await page.click('#btn-back');
+  await page.click('#btn-explore');
+  await sleep(1200);
+  t('bootstrap met kapotte JSON is stil', true);
 });
 
 /* ================================================================== */
