@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (241 asserts) + coverage-rapport
+npm install && npm test         # testsuite (243 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -60,9 +60,11 @@ Route (IndexedDB store `routes`, keyPath `id`):
 
 Regio (store `regions`): `{ id: 'region-<lat*200>_<lng*200>' | 'explore-cache',
 bounds: {minLat,minLng,maxLat,maxLng}, routes: […], nodes: […], horeca: […], savedAt }`.
-Knooppunten + horeca van het gebied worden parallel met de routes opgehaald
-(`fetchOverlays` mag stil falen) en in verken-modus als vaste overlays getoond
-(`MapView.renderExploreOverlays`), ook offline via `_overlaysFromRegions`.
+Knooppunten + horeca + routes van het gebied komen uit **één** gecombineerde
+Overpass-aanvraag (`Overpass.fetchArea` → `areaQuery`: twee statements, `out center`
+voor punten en `out geom(bbox)` voor routes) en worden in verken-modus als vaste
+overlays getoond (`MapView.renderExploreOverlays`), ook offline via
+`_overlaysFromRegions`.
 `explore-cache` = laatste verkenresultaat (max 7 dagen); `region-*` = automatisch
 offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eerst**:
 `_exploreFetch()` zonder `force` gebruikt verse `region-*`-routes zonder netwerk;
@@ -125,6 +127,10 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
   een test het "nog niet geladen"-pad nodig heeft.
 - Playwright-`geolocation` geeft standaard `accuracy: 0` → geef expliciet
   `accuracy` mee om de nauwkeurigheidscirkel te testen.
+- **`out geom(bbox)` levert `null`-punten** voor way-geometrie buiten het
+  zoekgebied (heeft in productie de verkenfunctie gebroken — fixtures waren te
+  schoon). `parseRoutes` splitst ways op die gaten; test nieuwe parsers altijd
+  óók tegen een echt Overpass-antwoord, niet enkel tegen handgemaakte fixtures.
 
 ## Service worker & updates
 

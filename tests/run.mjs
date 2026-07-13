@@ -189,11 +189,31 @@ await scenario('S1 unit-tests', {}, async (page) => {
     ok('buildQuery bevat bbox', Overpass._test.buildQuery({ minLat: 1, minLng: 2, maxLat: 3, maxLng: 4 }).includes('(1,2,3,4)'));
 
     // Duitsland-steun: verbrede routequery + officiële distance-tags
-    const rq = Overpass._test.routesQuery({ minLat: 50.5, minLng: 6.2, maxLat: 50.6, maxLng: 6.3 });
-    ok('routesQuery: lwn én rwn (Wanderwege)', rq.includes('(lwn|rwn)'));
-    ok('routesQuery: knooppuntennet uitgesloten', rq.includes('"network:type"!="node_network"'));
-    ok('routesQuery: routes zonder network-tag ook', rq.includes('[!"network"]'));
-    ok('routesQuery: geometrie geclipt op zoekgebied', rq.includes('out geom(50.5,6.2,50.6,6.3)'));
+    const rq = Overpass._test.areaQuery({ minLat: 50.5, minLng: 6.2, maxLat: 50.6, maxLng: 6.3 });
+    ok('areaQuery: lwn én rwn (Wanderwege)', rq.includes('(lwn|rwn)'));
+    ok('areaQuery: knooppuntennet uitgesloten', rq.includes('"network:type"!="node_network"'));
+    ok('areaQuery: routes zonder network-tag ook', rq.includes('[!"network"]'));
+    ok('areaQuery: geometrie geclipt op zoekgebied', rq.includes('out geom(50.5,6.2,50.6,6.3)'));
+    ok('areaQuery: knooppunten + horeca in dezelfde aanvraag',
+      rq.includes('rwn_ref') && rq.includes('amenity') && rq.includes('out center qt'));
+
+    // REGRESSIE (productie-bug): out geom(bbox) geeft null-punten voor geometrie
+    // buiten het zoekgebied — de parser moet daar splitsen, niet crashen.
+    const prNull = Overpass._test.parseRoutes({ elements: [{
+      type: 'relation', id: 5, tags: { name: 'Geclipt' },
+      members: [
+        { type: 'way', geometry: [
+          { lat: 51, lon: 5 }, { lat: 51.001, lon: 5 }, null,
+          { lat: 51.003, lon: 5 }, { lat: 51.004, lon: 5 },
+        ] },
+        { type: 'way', geometry: [null, null] },   // volledig buiten beeld
+        { type: 'node', ref: 42 },                  // node-member (courant) → overslaan
+        { type: 'way' },                            // way zonder geometrie → overslaan
+      ],
+    }] });
+    ok('REGRESSIE: null-punten → gesplitst, geen crash',
+      prNull.length === 1 && prNull[0].segments.length === 2, JSON.stringify(prNull[0] && prNull[0].segments.length));
+    ok('REGRESSIE: enkel-null-way overgeslagen', prNull[0].segments.every((sg) => sg.length === 2));
     const TD = Overpass._test.tagDistanceM;
     ok('distance-tag: km', TD('14') === 14000 && TD('22.3') === 22300);
     ok('distance-tag: Duitse komma', TD('9,5') === 9500);
@@ -967,11 +987,11 @@ await scenario('S12 verken-randgevallen', {
   await sleep(1600);
   t('dubbele zoekactie: oudste antwoord genegeerd', true);
   await page.evaluate(async () => {
-    const orig = Overpass.fetchRoutes;
-    Overpass.fetchRoutes = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
+    const orig = Overpass.fetchArea;
+    Overpass.fetchArea = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
     App._exploreFetch(true); App._exploreFetch(true); // eerste faalt als verouderd → guard in het foutpad
     await new Promise((r) => setTimeout(r, 900));
-    Overpass.fetchRoutes = orig;
+    Overpass.fetchArea = orig;
   });
   t('dubbele zoekactie met fout: oudste genegeerd', true);
 
@@ -1163,12 +1183,15 @@ await scenario('S15 deselecteren & opslag-eerst', {
   ctx: { geolocation: { latitude: 51.312, longitude: 5.41 }, permissions: ['geolocation'] },
   noOverpass: true,
 }, async (page, context) => {
+  // Sinds de gecombineerde gebieds-query komt alles in één respons terug.
+  const COMBINED = JSON.stringify({ elements: [
+    ...JSON.parse(LWN.toString()).elements,
+    ...JSON.parse(NODES_BODY).elements,
+  ] });
   let netCalls = 0;
   await context.route(isOverpassHost, (r) => {
     netCalls++;
-    const q = r.request().postData() || '';
-    r.fulfill({ status: 200, contentType: 'application/json',
-      body: q.includes('rwn_ref') ? NODES_BODY : LWN });
+    r.fulfill({ status: 200, contentType: 'application/json', body: COMBINED });
   });
   await open(page);
   await page.click('#btn-explore');
@@ -1223,16 +1246,6 @@ await scenario('S15 deselecteren & opslag-eerst', {
   await page.click('#explore-search');
   await page.waitForFunction(() => /route.*tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('Zoek hier forceert netwerk', netCalls > before, `${before} → ${netCalls}`);
-
-  // overlays-query faalt maar routes lukken → verkennen blijft werken, badges leeg
-  await context.route(isOverpassHost, (r) => {
-    const q = r.request().postData() || '';
-    if (q.includes('rwn_ref')) return r.abort();
-    r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
-  });
-  await page.click('#explore-search');
-  await page.waitForFunction(() => /route.*tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 30000 });
-  t('falende knooppunten-query hindert routes niet', (await page.$$('.kp-badge')).length === 0);
 
   // offline + force → routes uit opslag met (offline)-label
   await context.setOffline(true);

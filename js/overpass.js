@@ -166,9 +166,15 @@
       const t = e.tags || {};
       const segs = [];
       for (const m of e.members || []) {
-        if (m.type === 'way' && m.geometry && m.geometry.length > 1) {
-          segs.push(m.geometry.map((g) => [+g.lat.toFixed(6), +g.lon.toFixed(6)]));
+        if (m.type !== 'way' || !m.geometry) continue;
+        // out geom(bbox) geeft null-punten voor geometrie buiten het zoekgebied:
+        // splits de way op die gaten in losse, tekenbare stukken.
+        let cur = [];
+        for (const g of m.geometry) {
+          if (g && g.lat != null) cur.push([+g.lat.toFixed(6), +g.lon.toFixed(6)]);
+          else { if (cur.length > 1) segs.push(cur); cur = []; }
         }
+        if (cur.length > 1) segs.push(cur);
       }
       if (!segs.length) continue;
       // De geometrie kan op het zoekgebied geclipt zijn (lange Wanderwege);
@@ -191,21 +197,30 @@
     return routes;
   }
 
-  /** Query voor bewegwijzerde wandelroutes: lokale lussen (lwn) én regionale
-      Wanderwege (rwn, gangbaar in Duitsland) of routes zonder network-tag.
-      Het BE/NL-knooppuntennet (network:type=node_network) blijft er expliciet
-      uit, en de geometrie wordt op het zoekgebied geclipt zodat lange
-      trajecten de respons niet opblazen. */
-  function routesQuery(b) {
+  /** Eén gecombineerde gebieds-query: knooppunten + horeca (out center) én
+      bewegwijzerde wandelroutes (out geom, geclipt) in één aanvraag — dat
+      halveert de belasting op de Overpass-mirrors. Routes: lokale lussen
+      (lwn) én regionale Wanderwege (rwn, gangbaar in Duitsland) of routes
+      zonder network-tag; het BE/NL-knooppuntennet
+      (network:type=node_network) blijft er expliciet uit. */
+  function areaQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
     return `[out:json][timeout:20];(` +
+      `node["rwn_ref"](${bbox});` +
+      `node["lwn_ref"](${bbox});` +
+      `nwr["amenity"~"^(${HORECA})$"](${bbox});` +
+      `node["shop"="bakery"](${bbox});` +
+      `);out center qt;(` +
       `rel["route"~"^(hiking|foot|walking)$"]["network"~"^(lwn|rwn)$"]["network:type"!="node_network"](${bbox});` +
       `rel["route"~"^(hiking|foot|walking)$"][!"network"](${bbox});` +
       `);out geom(${bbox}) qt;`;
   }
 
-  async function fetchRoutes(bounds) {
-    return parseRoutes(await postQuery(routesQuery(bounds), 16000));
+  /** Alles van een gebied in één keer: { routes, nodes, horeca }. */
+  async function fetchArea(bounds) {
+    const data = await postQuery(areaQuery(bounds), 16000);
+    const { nodes, horeca } = parse(data);
+    return { routes: parseRoutes(data), nodes, horeca };
   }
 
   function boundsFromCenter(lat, lng, radiusM) {
@@ -227,8 +242,8 @@
   }
 
   global.Overpass = {
-    fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK,
+    fetchOverlays, fetchArea, boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, routesQuery, tagDistanceM },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM },
   };
 })(window);

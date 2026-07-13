@@ -376,12 +376,11 @@
       try {
         let routes, overlays, fromCache = false;
         if (navigator.onLine) {
-          // Routes en knooppunten/horeca parallel — overlays mogen falen
-          // zonder de routes mee te nemen.
-          [routes, overlays] = await Promise.all([
-            Overpass.fetchRoutes(bounds),
-            Overpass.fetchOverlays(bounds).catch(() => ({ nodes: [], horeca: [] })),
-          ]);
+          // Alles van het gebied in één Overpass-aanvraag (routes + knooppunten
+          // + horeca) — scheelt de helft van de serverbelasting.
+          const area = await Overpass.fetchArea(bounds);
+          routes = area.routes;
+          overlays = { nodes: area.nodes, horeca: area.horeca };
         } else {
           routes = this._routesFromRegions(bounds);
           overlays = this._overlaysFromRegions(bounds);
