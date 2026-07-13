@@ -74,7 +74,7 @@ sleutel = volledige tegel-URL).
 | Dienst | Gebruik | Let op |
 |---|---|---|
 | `api.komoot.de/v007/tours/<id>?_embedded=coordinates&share_token=…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
-| Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, lwn-routes | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
+| Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie geclipt met `out geom(bbox)`, afstand bij voorkeur uit de `distance`-tag) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
 | Carto Voyager `@2x` (standaard), Esri World Imagery, OpenTopoMap | kaarttegels | Vaste subdomeinen (geen `{s}`) zodat cache-URL's deterministisch zijn. **Fair use**: nooit bulk (heel België ≈ 20 GB — bewust niet ondersteund; corridor/regio volstaat) |
 
 ## Ontwerpprincipes (niet breken)

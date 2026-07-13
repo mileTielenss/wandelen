@@ -187,6 +187,23 @@ await scenario('S1 unit-tests', {}, async (page) => {
     ok('parse: horeca incl. way-center', pv.horeca.length === 2 && pv.horeca[0].n === 'De Kroon');
 
     ok('buildQuery bevat bbox', Overpass._test.buildQuery({ minLat: 1, minLng: 2, maxLat: 3, maxLng: 4 }).includes('(1,2,3,4)'));
+
+    // Duitsland-steun: verbrede routequery + officiële distance-tags
+    const rq = Overpass._test.routesQuery({ minLat: 50.5, minLng: 6.2, maxLat: 50.6, maxLng: 6.3 });
+    ok('routesQuery: lwn én rwn (Wanderwege)', rq.includes('(lwn|rwn)'));
+    ok('routesQuery: knooppuntennet uitgesloten', rq.includes('"network:type"!="node_network"'));
+    ok('routesQuery: routes zonder network-tag ook', rq.includes('[!"network"]'));
+    ok('routesQuery: geometrie geclipt op zoekgebied', rq.includes('out geom(50.5,6.2,50.6,6.3)'));
+    const TD = Overpass._test.tagDistanceM;
+    ok('distance-tag: km', TD('14') === 14000 && TD('22.3') === 22300);
+    ok('distance-tag: Duitse komma', TD('9,5') === 9500);
+    ok('distance-tag: meters-vergissing (≥1000)', TD('7700') === 7700);
+    ok('distance-tag: rommel/leeg/nul → null', TD('abc') === null && TD(null) === null && TD('0') === null);
+    const prDist = Overpass._test.parseRoutes({ elements: [{
+      type: 'relation', id: 9, tags: { name: 'Rhein-Venn-Weg', distance: '144.2' },
+      members: [{ type: 'way', geometry: [{ lat: 50.55, lon: 6.25 }, { lat: 50.551, lon: 6.25 }] }],
+    }] });
+    ok('parseRoutes: distance-tag wint van geclipte meting', prDist[0].distance === 144200, prDist[0].distance);
     const bc = Overpass.boundsFromCenter(51, 5, 1000);
     ok('boundsFromCenter ≈ ±0.009°', Math.abs((bc.maxLat - bc.minLat) - 0.01797) < 0.001);
     const bf = Overpass.boundsFromCoords([[51, 5, 0], [51.1, 5.1, 0]]);

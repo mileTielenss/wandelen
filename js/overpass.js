@@ -150,6 +150,15 @@
     return chain;
   }
 
+  /** Officiële distance-tag ("14", "22,3", "144.2" = km) naar meters, of null. */
+  function tagDistanceM(v) {
+    if (!v) return null;
+    const n = parseFloat(String(v).replace(',', '.'));
+    if (!isFinite(n) || n <= 0) return null;
+    // OSM-conventie is km; extreem grote waarden zijn (fout) in meters getagd.
+    return n >= 1000 ? Math.round(n) : Math.round(n * 1000);
+  }
+
   function parseRoutes(data) {
     const routes = [];
     for (const e of data.elements || []) {
@@ -162,7 +171,10 @@
         }
       }
       if (!segs.length) continue;
-      const distance = Math.round(segs.reduce((a, s) => a + segLen(s), 0));
+      // De geometrie kan op het zoekgebied geclipt zijn (lange Wanderwege);
+      // vertrouw daarom eerst de officiële distance-tag, dan pas de meting.
+      const distance = tagDistanceM(t.distance) ||
+        Math.round(segs.reduce((a, s) => a + segLen(s), 0));
       const coords = stitch(segs);
       routes.push({
         id: 'osm-' + e.id, source: 'osm', relId: e.id,
@@ -179,11 +191,21 @@
     return routes;
   }
 
-  /** Haal bewegwijzerde lokale wandelroutes (lwn) op binnen bounds. */
+  /** Query voor bewegwijzerde wandelroutes: lokale lussen (lwn) én regionale
+      Wanderwege (rwn, gangbaar in Duitsland) of routes zonder network-tag.
+      Het BE/NL-knooppuntennet (network:type=node_network) blijft er expliciet
+      uit, en de geometrie wordt op het zoekgebied geclipt zodat lange
+      trajecten de respons niet opblazen. */
+  function routesQuery(b) {
+    const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
+    return `[out:json][timeout:20];(` +
+      `rel["route"~"^(hiking|foot|walking)$"]["network"~"^(lwn|rwn)$"]["network:type"!="node_network"](${bbox});` +
+      `rel["route"~"^(hiking|foot|walking)$"][!"network"](${bbox});` +
+      `);out geom(${bbox}) qt;`;
+  }
+
   async function fetchRoutes(bounds) {
-    const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
-    const q = `[out:json][timeout:20];rel["route"~"^(hiking|foot|walking)$"]["network"="lwn"](${bbox});out geom qt;`;
-    return parseRoutes(await postQuery(q, 16000));
+    return parseRoutes(await postQuery(routesQuery(bounds), 16000));
   }
 
   function boundsFromCenter(lat, lng, radiusM) {
@@ -207,6 +229,6 @@
   global.Overpass = {
     fetchOverlays, fetchRoutes, boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, routesQuery, tagDistanceM },
   };
 })(window);

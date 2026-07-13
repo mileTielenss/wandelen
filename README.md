@@ -31,8 +31,9 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Horeca**: cafés, restaurants, snackbars en bakkers langs de route staan als icoontjes
   op de kaart. Standaard aan; aan/uit via 🗺.
 - **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): opent een kaart met
-  álle bewegwijzerde wandellussen rond je, elk in **de kleur van de pijltjes** en met de
-  **afstand**. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
+  álle bewegwijzerde wandelroutes rond je, elk in **de kleur van de pijltjes** en met de
+  **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege; bij lange
+  trajecten wordt de officiële afstand getoond). Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
   Tik je op een **leeg stuk kaart**, dan wordt de keuze weer losgelaten en kan je
   verder zoeken. Het verkende gebied (kaart + routes) wordt **automatisch** offline
