@@ -99,7 +99,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 225 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 234 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
@@ -121,7 +121,7 @@ wordt functioneel getest via de offline-herstart-scenario's.
 | Tegels | Carto Voyager @2x (standaard), Esri World Imagery, OpenTopoMap — corridor-/regiogewijs in de Cache Storage |
 | Opslag | IndexedDB (routes + regio's), Cache Storage (app-shell + tegels), localStorage (voorkeuren) |
 | Offline | Service worker: app-shell stale-while-revalidate, tegels cache-first |
-| Routebronnen | Komoot publieke tour-API (`api.komoot.de/v007/tours/…`) en OSM/Overpass (lwn-routes, knooppunten, horeca) |
+| Routebronnen | Komoot publieke tour-API (`api.komoot.de/v007/tours/…`) en OSM/Overpass (wandelroutes lwn/rwn, knooppunten, horeca) |
 
 Voor architectuur, werkafspraken en uitbreiden: zie **[CLAUDE.md](CLAUDE.md)**.
 
