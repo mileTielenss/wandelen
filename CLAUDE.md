@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (225 asserts) + coverage-rapport
+npm install && npm test         # testsuite (243 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -59,7 +59,10 @@ Route (IndexedDB store `routes`, keyPath `id`):
 ```
 
 Regio (store `regions`): `{ id: 'region-<lat*200>_<lng*200>' | 'explore-cache',
-bounds: {minLat,minLng,maxLat,maxLng}, routes: […], savedAt }`.
+bounds: {minLat,minLng,maxLat,maxLng}, routes: […], nodes: […], horeca: […], savedAt }`.
+Knooppunten + horeca van het gebied worden parallel met de routes opgehaald
+(`fetchOverlays` mag stil falen) en in verken-modus als vaste overlays getoond
+(`MapView.renderExploreOverlays`), ook offline via `_overlaysFromRegions`.
 `explore-cache` = laatste verkenresultaat (max 7 dagen); `region-*` = automatisch
 offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eerst**:
 `_exploreFetch()` zonder `force` gebruikt verse `region-*`-routes zonder netwerk;

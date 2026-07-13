@@ -303,6 +303,7 @@
         this._exploreRoutes = cache.routes;
         this._exploreBounds = cache.bounds;
         MapView.renderExplore(cache.routes, (rt) => this._onExplorePick(rt));
+        MapView.renderExploreOverlays(cache.nodes || [], cache.horeca || []);
         $('explore-hint').textContent = `${cache.routes.length} routes (vorige zoekactie) — locatie bepalen…`;
       } else {
         $('explore-hint').textContent = 'locatie bepalen…';
@@ -357,6 +358,8 @@
         if (stored.length) {
           this._exploreRoutes = stored;
           this._exploreBounds = bounds;
+          const ov = this._overlaysFromRegions(bounds);
+          MapView.renderExploreOverlays(ov.nodes, ov.horeca);
           if (!this._selectedExplore) {
             const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
             const same = stored.length === shownIds.size && stored.every((r) => shownIds.has(r.id));
@@ -371,11 +374,17 @@
       $('explore-hint').textContent = 'routes ophalen…';
       $('explore-search').disabled = true;
       try {
-        let routes, fromCache = false;
+        let routes, overlays, fromCache = false;
         if (navigator.onLine) {
-          routes = await Overpass.fetchRoutes(bounds);
+          // Routes en knooppunten/horeca parallel — overlays mogen falen
+          // zonder de routes mee te nemen.
+          [routes, overlays] = await Promise.all([
+            Overpass.fetchRoutes(bounds),
+            Overpass.fetchOverlays(bounds).catch(() => ({ nodes: [], horeca: [] })),
+          ]);
         } else {
           routes = this._routesFromRegions(bounds);
+          overlays = this._overlaysFromRegions(bounds);
           fromCache = true;
         }
         // Verouderd antwoord (gebruiker zocht ondertussen opnieuw)? Negeren.
@@ -388,6 +397,7 @@
           routes.length === shownIds.size && routes.every((r) => shownIds.has(r.id));
         this._exploreRoutes = routes;
         this._exploreBounds = bounds;
+        MapView.renderExploreOverlays(overlays.nodes, overlays.horeca);
         // Niet hertekenen over een gemaakte keuze heen.
         if (!this._selectedExplore) {
           if (!sameAsShown) MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
@@ -399,11 +409,12 @@
         if (!fromCache && routes.length) {
           const region = {
             id: 'explore-cache', name: '(auto) laatste verkenning',
-            bounds, routes, savedAt: new Date().toISOString(),
+            bounds, routes, nodes: overlays.nodes, horeca: overlays.horeca,
+            savedAt: new Date().toISOString(),
           };
           DB.putRegion(region).then(async () => { this._regions = await DB.allRegions(); }).catch(() => {});
-          // En haal het gebied (kaart + routes) automatisch offline binnen.
-          this._autoCacheRegion(bounds, routes);
+          // En haal het gebied (kaart + routes + knooppunten) automatisch offline binnen.
+          this._autoCacheRegion(bounds, routes, overlays);
         }
       } catch (e) {
         if (mySeq !== this._exploreSeq || !this._exploreActive) return;
@@ -413,6 +424,8 @@
           this._exploreRoutes = fallback;
           this._exploreBounds = bounds;
           MapView.renderExplore(fallback, (rt) => this._onExplorePick(rt));
+          const ovF = this._overlaysFromRegions(bounds);
+          MapView.renderExploreOverlays(ovF.nodes, ovF.horeca);
           $('explore-hint').textContent = `${fallback.length} routes (offline cache) — tik er één aan`;
         } else if (!this._selectedExplore) {
           $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
@@ -491,6 +504,26 @@
       return best.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
     },
 
+    // Knooppunten + horeca uit alle opgeslagen regio's die dit gebied overlappen.
+    _overlaysFromRegions(bounds) {
+      const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
+      const nodes = [], horeca = [];
+      const seenN = new Set(), seenH = new Set();
+      for (const reg of this._regions) {
+        const rb = reg.bounds;
+        if (!(cx >= rb.minLat && cx <= rb.maxLat && cy >= rb.minLng && cy <= rb.maxLng)) continue;
+        for (const n of reg.nodes || []) {
+          const k = n.ref + '@' + n.lat.toFixed(4) + ',' + n.lng.toFixed(4);
+          if (!seenN.has(k)) { seenN.add(k); nodes.push(n); }
+        }
+        for (const h of reg.horeca || []) {
+          const k = h.n + '@' + h.lat.toFixed(4) + ',' + h.lng.toFixed(4);
+          if (!seenH.has(k)) { seenH.add(k); horeca.push(h); }
+        }
+      }
+      return { nodes, horeca };
+    },
+
     // ---------- Hernoem / verwijder menu ----------
     openMenu(route) {
       _menuRoute = route;
@@ -520,7 +553,7 @@
     // Na een geslaagde online zoekactie: sla het gebied stilletjes op (routes +
     // kaarttegels op overzichtsniveau), zodat je hier later offline kan kiezen.
     // Volg je daarna een route, dan cachet die zichzelf op hoogste detail.
-    async _autoCacheRegion(bounds, routes) {
+    async _autoCacheRegion(bounds, routes, overlays) {
       if (!navigator.onLine || !routes.length || this._regionJob) return;
       const cx = (bounds.minLat + bounds.maxLat) / 2, cy = (bounds.minLng + bounds.maxLng) / 2;
       const id = 'region-' + Math.round(cx * 200) + '_' + Math.round(cy * 200);
@@ -543,6 +576,8 @@
             id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col,
             distance: r.distance, segments: r.segments, coords: r.coords,
           })),
+          nodes: (overlays && overlays.nodes) || [],
+          horeca: (overlays && overlays.horeca) || [],
           basemap: bm.key,
           savedAt: new Date().toISOString(),
         };
@@ -565,8 +600,9 @@
       $('ov-nodes').checked = this.prefs.showNodes;
       $('ov-horeca').checked = this.prefs.showHoreca;
       const nc = MapView._nodeCount, hc = MapView._horecaCount;
-      $('ov-nodes-count').textContent = nc != null ? `(${nc} op deze route)` : '';
-      $('ov-horeca-count').textContent = hc != null ? `(${hc} in de buurt)` : '';
+      const waar = MapView.exploreMode ? 'in dit gebied' : 'op deze route';
+      $('ov-nodes-count').textContent = nc != null ? `(${nc} ${waar})` : '';
+      $('ov-horeca-count').textContent = hc != null ? `(${hc} ${MapView.exploreMode ? 'in dit gebied' : 'in de buurt'})` : '';
       $('overlays-note').textContent = (_current && !_current.overlaysFetched && !navigator.onLine)
         ? 'Knooppunten/horeca nog niet geladen — verbind één keer met internet.'
         : 'Overlays worden bij de route offline bewaard.';

@@ -607,7 +607,12 @@ await scenario('S9 statuslampjes', {
   await open(page);
   t('idle: internet uit', (await txt(page, '#statusbar-list')).includes('internet uit'));
   await page.click('#btn-explore');
-  await sleep(1200);
+  await sleep(300);
+  // lagen-sheet vóór het eerste resultaat: nog geen tellingen bekend
+  await page.click('#btn-layers');
+  t('lagen-sheet vóór eerste resultaat: geen tellingen', (await txt(page, '#ov-nodes-count')) === '' && (await txt(page, '#ov-horeca-count')) === '');
+  await page.click('#layers-close');
+  await sleep(900);
   t('bezig: internet actief', (await txt(page, '#statusbar-map')).includes('internet actief'));
   await page.waitForFunction(() => /tik er één aan|geen/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   await page.waitForFunction(() => document.getElementById('statusbar-map').textContent.includes('internet uit'), null, { timeout: 60000 });
@@ -950,7 +955,7 @@ await scenario('S12 verken-randgevallen', {
 
   // kaartlagen-sheet in verken-modus (tellingen leeg)
   await page.click('#btn-layers');
-  t('lagen-sheet in verkennen zonder tellingen', (await txt(page, '#ov-nodes-count')) === '');
+  t('lagen-sheet in verkennen telt gebied', (await txt(page, '#ov-nodes-count')).includes('in dit gebied'));
   await page.click('#layers-close');
 
   // verouderde zoekactie: tweede zoek annuleert de eerste (succes- én foutpad)
@@ -1149,6 +1154,11 @@ await scenario('S14b indexedDB volledig kapot', {
 });
 
 /* ---------- S15: deselecteren & opslag-eerst verkennen ---------- */
+const NODES_BODY = JSON.stringify({ elements: [
+  { type: 'node', lat: 51.313, lon: 5.406, tags: { rwn_ref: '71' } },
+  { type: 'node', lat: 51.309, lon: 5.403, tags: { rwn_ref: '72' } },
+  { type: 'node', lat: 51.311, lon: 5.404, tags: { amenity: 'cafe', name: 'De Pit' } },
+] });
 await scenario('S15 deselecteren & opslag-eerst', {
   ctx: { geolocation: { latitude: 51.312, longitude: 5.41 }, permissions: ['geolocation'] },
   noOverpass: true,
@@ -1156,13 +1166,20 @@ await scenario('S15 deselecteren & opslag-eerst', {
   let netCalls = 0;
   await context.route(isOverpassHost, (r) => {
     netCalls++;
-    r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
+    const q = r.request().postData() || '';
+    r.fulfill({ status: 200, contentType: 'application/json',
+      body: q.includes('rwn_ref') ? NODES_BODY : LWN });
   });
   await open(page);
   await page.click('#btn-explore');
   await page.waitForFunction(() => /tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('eerste verkenning gebruikt internet', netCalls >= 1, String(netCalls));
+  t('knooppunten zichtbaar tijdens verkennen', (await page.$$('.kp-badge')).length === 2);
+  t('horeca (koffie) zichtbaar tijdens verkennen', (await page.$$('.horeca-pin')).length === 1);
   await page.waitForFunction(() => /Gebied offline/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });
+  const regNodes = await page.evaluate(async () =>
+    (await DB.allRegions()).some((r) => r.id.startsWith('region-') && (r.nodes || []).length === 2));
+  t('knooppunten opgeslagen in de regio', regNodes);
 
   // selecteren en weer deselecteren via een lege plek (meervoud-tak)
   await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
@@ -1197,6 +1214,7 @@ await scenario('S15 deselecteren & opslag-eerst', {
   t('tweede verkenning komt uit opslag (hint)', true);
   t('tweede verkenning gebruikt geen internet', netCalls === before, `${before} → ${netCalls}`);
   t('routes zichtbaar uit opslag', (await page.$$('#map .leaflet-overlay-pane path')).length > 3);
+  t('knooppunten ook uit opslag zichtbaar', (await page.$$('.kp-badge')).length === 2);
   await page.evaluate(() => MapView.selectExplore(MapView.exploreRoutes[0].id));
   await sleep(200);
   t('kiezen uit opslag-weergave werkt', await page.$eval('#explore-follow', (el) => !el.disabled));
@@ -1206,11 +1224,22 @@ await scenario('S15 deselecteren & opslag-eerst', {
   await page.waitForFunction(() => /route.*tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('Zoek hier forceert netwerk', netCalls > before, `${before} → ${netCalls}`);
 
+  // overlays-query faalt maar routes lukken → verkennen blijft werken, badges leeg
+  await context.route(isOverpassHost, (r) => {
+    const q = r.request().postData() || '';
+    if (q.includes('rwn_ref')) return r.abort();
+    r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
+  });
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /route.*tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 30000 });
+  t('falende knooppunten-query hindert routes niet', (await page.$$('.kp-badge')).length === 0);
+
   // offline + force → routes uit opslag met (offline)-label
   await context.setOffline(true);
   await page.click('#explore-search');
   await page.waitForFunction(() => /\(offline\)/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('offline geforceerd zoeken → opgeslagen routes (offline)', true);
+  t('offline: knooppunten uit opslag', (await page.$$('.kp-badge')).length === 2);
 });
 
 /* ================================================================== */

@@ -26,10 +26,12 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Scherpe kaart + kaartlagen** (🗺-knop): kies tussen **Kaart — scherp** (@2x-tegels,
   haarscherp op retina, ook uitgezoomd), **Satelliet** (luchtfoto) en **Topografisch**
   (hoogtelijnen). Je keuze blijft bewaard.
-- **Wandelknooppunten**: de genummerde knooppunten die je route volgt worden als badges
-  getoond (bv. **71**), zodat je onderweg de bordjes kan volgen. Aan/uit via 🗺.
-- **Horeca**: cafés, restaurants, snackbars en bakkers langs de route staan als icoontjes
-  op de kaart. Standaard aan; aan/uit via 🗺.
+- **Wandelknooppunten**: de genummerde knooppunten worden als badges getoond (bv. **71**)
+  — bij een geopende route de knooppunten die je route volgt, en tijdens **Nieuwe
+  wandeling** álle knooppunten van het gebied, zodat je op de bordjes-nummers kan
+  zoeken. Aan/uit via 🗺.
+- **Horeca (☕)**: cafés, restaurants, snackbars en bakkers staan als koffie-icoontjes op
+  de kaart — langs je route én in het verkende gebied. Standaard aan; aan/uit via 🗺.
 - **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): opent een kaart met
   álle bewegwijzerde wandelroutes rond je, elk in **de kleur van de pijltjes** en met de
   **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege; bij lange
@@ -99,7 +101,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 234 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 243 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

@@ -97,43 +97,51 @@
     },
 
     // ---------- Overlays: wandelknooppunten + horeca ----------
-    renderOverlays() {
+    _nodeMarkers(nodes) {
+      return nodes.map((n) => L.marker([n.lat, n.lng], {
+        icon: L.divIcon({
+          className: '', html: `<div class="kp-badge">${escapeHtml(n.ref)}</div>`,
+          iconSize: [30, 30], iconAnchor: [15, 15],
+        }),
+        keyboard: false,
+      }).bindTooltip('Wandelknooppunt ' + n.ref, { direction: 'top' }));
+    },
+
+    _horecaMarkers(horeca) {
+      return horeca.map((h) => L.marker([h.lat, h.lng], {
+        icon: L.divIcon({
+          className: '', html: `<div class="horeca-pin" title="${escapeHtml(h.n)}">${horecaEmoji(h.t)}</div>`,
+          iconSize: [24, 24], iconAnchor: [12, 12],
+        }),
+        keyboard: false,
+      }).bindTooltip((h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t), { direction: 'top' }));
+    },
+
+    _setOverlayLayers(nodes, horeca) {
       if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
       if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
-      const r = this.route;
-      if (!r) return;
-
-      // Knooppunten binnen ~200 m van de route (de knooppunten die je route volgt).
-      const nodes = (r.nodes || []).filter(
-        (n) => nearestDistanceMeters(n.lat, n.lng, this._latlngs) <= 200
-      );
-      this.nodeLayer = L.layerGroup(
-        nodes.map((n) => L.marker([n.lat, n.lng], {
-          icon: L.divIcon({
-            className: '', html: `<div class="kp-badge">${escapeHtml(n.ref)}</div>`,
-            iconSize: [30, 30], iconAnchor: [15, 15],
-          }),
-          keyboard: false,
-        }).bindTooltip('Wandelknooppunt ' + n.ref, { direction: 'top' }))
-      );
-
-      // Horeca binnen ~450 m van de route (een kleine omweg waard).
-      const horeca = (r.horeca || []).filter(
-        (h) => nearestDistanceMeters(h.lat, h.lng, this._latlngs) <= 450
-      );
-      this.horecaLayer = L.layerGroup(
-        horeca.map((h) => L.marker([h.lat, h.lng], {
-          icon: L.divIcon({
-            className: '', html: `<div class="horeca-pin" title="${escapeHtml(h.n)}">${horecaEmoji(h.t)}</div>`,
-            iconSize: [24, 24], iconAnchor: [12, 12],
-          }),
-          keyboard: false,
-        }).bindTooltip((h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t), { direction: 'top' }))
-      );
-
+      this.nodeLayer = L.layerGroup(this._nodeMarkers(nodes));
+      this.horecaLayer = L.layerGroup(this._horecaMarkers(horeca));
       this._nodeCount = nodes.length;
       this._horecaCount = horeca.length;
       this.applyOverlayVisibility();
+    },
+
+    renderOverlays() {
+      const r = this.route;
+      if (!r) return;
+      // Bij een geopende route: enkel wat er echt bij hoort — knooppunten binnen
+      // ~200 m van de route, horeca binnen ~450 m (een kleine omweg waard).
+      this._setOverlayLayers(
+        (r.nodes || []).filter((n) => nearestDistanceMeters(n.lat, n.lng, this._latlngs) <= 200),
+        (r.horeca || []).filter((h) => nearestDistanceMeters(h.lat, h.lng, this._latlngs) <= 450)
+      );
+    },
+
+    // In verken-modus: álle knooppunten + horeca van het gebied (geen filter),
+    // zodat je op de bordjes-nummers kan zoeken.
+    renderExploreOverlays(nodes, horeca) {
+      this._setOverlayLayers(nodes, horeca);
     },
 
     applyOverlayVisibility() {
@@ -268,6 +276,9 @@
       this.selectedExploreId = null;
       if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
       if (this._exploreTap) this.map.off('click', this._exploreTap);
+      // Ook de gebieds-overlays (knooppunten/horeca) opruimen.
+      if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
+      if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
       this.clearLocation();
     },
 
