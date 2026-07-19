@@ -102,13 +102,20 @@
 
     // ---------- Overlays: wandelknooppunten + horeca ----------
     _nodeMarkers(nodes) {
-      return nodes.map((n) => L.marker([n.lat, n.lng], {
-        icon: L.divIcon({
-          className: '', html: `<div class="kp-badge">${escapeHtml(n.ref)}</div>`,
-          iconSize: [30, 30], iconAnchor: [15, 15],
-        }),
-        keyboard: false,
-      }).bindTooltip(n.name ? escapeHtml(n.name) : 'Wandelknooppunt ' + n.ref, { direction: 'top' }));
+      return nodes.map((n) => {
+        const m = L.marker([n.lat, n.lng], {
+          icon: L.divIcon({
+            className: '', html: `<div class="kp-badge">${escapeHtml(n.ref)}</div>`,
+            iconSize: [30, 30], iconAnchor: [15, 15],
+          }),
+          keyboard: false,
+        }).bindTooltip(n.name ? escapeHtml(n.name) : 'Wandelknooppunt ' + n.ref, { direction: 'top' });
+        // Route-eigen punten (bv. de bordjes) hebben een naam → tik erop voor een
+        // popup met die naam. Een tooltip verschijnt niet bij een tik op een
+        // aanraakscherm; een popup wél. Knooppunten (zonder naam) blijven hover-only.
+        if (n.name) m.bindPopup(`<div class="wp-popup">${escapeHtml(n.name)}</div>`);
+        return m;
+      });
     },
 
     _horecaMarkers(horeca) {

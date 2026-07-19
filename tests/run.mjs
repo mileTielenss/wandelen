@@ -1684,6 +1684,14 @@ await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
     return m ? m.getTooltip().getContent() : '';
   });
   t('tooltip toont bordnaam i.p.v. "Wandelknooppunt"', !/Wandelknooppunt/.test(tip) && tip.length > 2, tip);
+  // Bordje is aantikbaar → popup met de naam (tooltips tonen niet bij een tik).
+  const pop = await page.evaluate(() => {
+    const m = MapView.waypointLayer.getLayers()[0];
+    m.openPopup();
+    const open = !!document.querySelector('.leaflet-popup .wp-popup');
+    return { content: m.getPopup() ? m.getPopup().getContent() : '', open };
+  });
+  t('bordje aantikbaar → popup met naam opent', pop.open && /\w/.test(pop.content), JSON.stringify(pop));
   // REGRESSIE: bordjes horen bij de route → blijven zichtbaar ook als de
   // knooppunten-schakelaar UIT staat (ze zijn géén knooppunten).
   await page.evaluate(() => { App.setOverlay('nodes', false); });
