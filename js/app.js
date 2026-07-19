@@ -163,21 +163,30 @@
     async loadFromInput() {
       const input = $('url-input');
       const url = input.value.trim();
-      if (!url) { this.setLoadStatus('Plak eerst een Komoot- of GPX-URL.', 'error'); return; }
+      if (!url) { this.setLoadStatus('Plak eerst een link (Komoot of GPX).', 'error'); return; }
       $('btn-load').disabled = true;
       this.setLoadStatus('Route ophalen…', '');
       try {
-        const route = GPX.isGpxUrl(url)
-          ? await GPX.importFromUrl(url)
-          : await Komoot.importFromUrl(url);
+        const route = await this._importFromUrl(url);
         input.value = '';
         await this._saveImported(route);
       } catch (e) {
         this.setLoadStatus('Mislukt: ' + e.message +
-          '. Controleer de URL (met share_token) en je internetverbinding.', 'error');
+          '. Plak een Komoot-tour (met share_token) of een directe GPX-link.', 'error');
       } finally {
         $('btn-load').disabled = false;
       }
+    },
+
+    // Elke link aanvaarden en de juiste bron kiezen: .gpx → GPX, een Komoot-tour
+    // → Komoot, en anders eerst GPX proberen (veel “interessante” links zijn een
+    // direct GPX-bestand) met Komoot als terugval.
+    async _importFromUrl(url) {
+      if (GPX.isGpxUrl(url)) return GPX.importFromUrl(url);
+      if (Komoot.parseUrl(url)) return Komoot.importFromUrl(url);
+      // Geen .gpx en geen Komoot-tour → meteen een duidelijke boodschap i.p.v.
+      // gokken (en op het netwerk blijven hangen op een willekeurige link).
+      throw new Error('Onbekende link — plak een Komoot-tour of een directe GPX-link (.gpx)');
     },
 
     async loadFromFile(file) {
@@ -374,6 +383,10 @@
         bounds = Overpass.boundsFromCenter(c.lat, c.lng, 9000);
       }
       const mySeq = (this._exploreSeq = (this._exploreSeq || 0) + 1);
+      const onPick = (rt) => this._onExplorePick(rt);
+      // Vroeg zetten: de landdata-overlay (be-overlays) rendert op dit gebied
+      // zodra ze binnen is, ook als er (nog) geen routes zijn.
+      this._exploreBounds = bounds;
 
       // Opslag-eerst: is dit gebied al eens (vers, <30 dagen) opgehaald, gebruik
       // dan de bewaarde routes — geen internet nodig. “Zoek hier” (force) haalt
@@ -387,7 +400,7 @@
           if (!this._selectedExplore) {
             const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
             const same = stored.length === shownIds.size && stored.every((r) => shownIds.has(r.id));
-            if (!same) MapView.renderExplore(stored, (rt) => this._onExplorePick(rt));
+            if (!same) MapView.renderExplore(stored, onPick);
             $('explore-hint').textContent =
               `${stored.length} route${stored.length > 1 ? 's' : ''} (opgeslagen) — tik er één aan`;
           }
@@ -395,58 +408,93 @@
         }
       }
 
-      $('explore-hint').textContent = 'routes ophalen…';
       $('explore-search').disabled = true;
-      try {
-        let routes, overlays, fromCache = false;
-        if (navigator.onLine) {
-          // Alles van het gebied in één Overpass-aanvraag (routes + knooppunten
-          // + horeca) — scheelt de helft van de serverbelasting.
-          const area = await Overpass.fetchArea(bounds);
-          routes = area.routes;
-          overlays = { nodes: area.nodes, horeca: area.horeca };
-        } else {
-          routes = this._routesFromRegions(bounds);
-          overlays = this._overlaysFromRegions(bounds);
-          fromCache = true;
-        }
-        // Verouderd antwoord (gebruiker zocht ondertussen opnieuw)? Negeren.
-        if (mySeq !== this._exploreSeq || !this._exploreActive) return;
-        // Zelfde routes als wat al getoond wordt (bv. cache vs. vers)? Dan NIET
-        // hertekenen — anders verdwijnt de laag net onder de vinger van de
-        // gebruiker en gaat de tik verloren.
-        const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
-        const sameAsShown = shownIds.size > 0 &&
-          routes.length === shownIds.size && routes.every((r) => shownIds.has(r.id));
+      // Nieuwe zoekactie breekt de vorige (nog lopende) stroom af.
+      if (this._exploreAbort) this._exploreAbort.abort();
+      const ctrl = (this._exploreAbort = new AbortController());
+      const stale = () => mySeq !== this._exploreSeq || !this._exploreActive;
+
+      if (!navigator.onLine) {
+        // Offline: alles uit de lokale opslag.
+        const routes = this._routesFromRegions(bounds);
         this._exploreRoutes = routes;
         this._exploreBounds = bounds;
-        this._renderAreaOverlays(overlays, bounds);
-        // Niet hertekenen over een gemaakte keuze heen.
+        this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
         if (!this._selectedExplore) {
-          if (!sameAsShown) MapView.renderExplore(routes, (rt) => this._onExplorePick(rt));
+          MapView.renderExplore(routes, onPick);
           $('explore-hint').textContent = routes.length
-            ? `${routes.length} route${routes.length > 1 ? 's' : ''} — tik er één aan${fromCache ? ' (offline)' : ''}`
-            : (fromCache ? 'geen offline routes voor dit gebied' : 'geen bewegwijzerde lussen hier gevonden');
+            ? `${routes.length} route${routes.length > 1 ? 's' : ''} (offline) — tik er één aan`
+            : 'geen offline routes voor dit gebied';
         }
-        // Bewaar als cache zodat de volgende keer meteen iets te zien is.
-        if (!fromCache && routes.length) {
-          const region = {
-            id: 'explore-cache', name: '(auto) laatste verkenning',
-            bounds, routes, nodes: overlays.nodes, horeca: overlays.horeca,
-            savedAt: new Date().toISOString(),
-          };
-          DB.putRegion(region).then(async () => { this._regions = await DB.allRegions(); }).catch(() => {});
-          // En haal het gebied (kaart + routes + knooppunten) automatisch offline binnen.
-          this._autoCacheRegion(bounds, routes, overlays);
+        $('explore-search').disabled = false;
+        return;
+      }
+
+      // Knooppunten/horeca: toon meteen wat lokaal is (België = instant), en
+      // haal op de achtergrond vers op — dit blokkeert het tekenen niet.
+      this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
+      const overlaysP = Overpass.fetchOverlaysArea(bounds, ctrl.signal).catch(() => null);
+
+      try {
+        // Fase 1 — piepkleine lijst-query: meteen weten hoeveel routes er zijn.
+        $('explore-hint').textContent = 'routes zoeken…';
+        const list = await Overpass.fetchRouteList(bounds, ctrl.signal);
+        if (stale()) return;
+        if (!list.length) {
+          if (!this._selectedExplore) {
+            MapView.renderExplore([], onPick);
+            $('explore-hint').textContent = 'geen bewegwijzerde lussen hier gevonden';
+          }
+          $('explore-search').disabled = false;
+          return;
         }
+
+        // Fase 2 — geometrie in kleine, parallelle brokjes; elk brokje verschijnt
+        // meteen op de kaart (progressief laden i.p.v. wachten op alles).
+        if (!this._selectedExplore) MapView.startExploreRender(onPick);
+        const ids = list.map((l) => l.id);
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 6) chunks.push(ids.slice(i, i + 6));
+        const all = [];
+        $('explore-hint').textContent = `0 van ${list.length} routes laden…`;
+        await this._runPool(chunks, 3, async (chunk) => {
+          let part;
+          try { part = await Overpass.fetchRoutesByIds(chunk, ctrl.signal); }
+          catch (_) { return; } // één brokje mislukt → de rest komt gewoon door
+          if (stale()) return;
+          all.push(...part);
+          if (!this._selectedExplore) MapView.addExploreRoutes(part);
+          $('explore-hint').textContent = this._selectedExplore
+            ? $('explore-hint').textContent
+            : `${all.length} van ${list.length} routes — tik er één aan`;
+        });
+        if (stale()) return;
+        if (!all.length) throw new Error('geen geometrie');
+
+        this._exploreRoutes = all;
+        this._exploreBounds = bounds;
+        if (!this._selectedExplore) {
+          $('explore-hint').textContent = `${all.length} route${all.length > 1 ? 's' : ''} — tik er één aan`;
+        }
+
+        // Overlays vers (buiten België de enige bron) + alles offline bewaren.
+        const ov = (await overlaysP) || this._overlaysFromRegions(bounds);
+        if (!stale() && !this._selectedExplore) this._renderAreaOverlays(ov, bounds);
+        const region = {
+          id: 'explore-cache', name: '(auto) laatste verkenning',
+          bounds, routes: all, nodes: ov.nodes, horeca: ov.horeca,
+          savedAt: new Date().toISOString(),
+        };
+        DB.putRegion(region).then(async () => { this._regions = await DB.allRegions(); }).catch(() => {});
+        this._autoCacheRegion(bounds, all, ov);
       } catch (e) {
-        if (mySeq !== this._exploreSeq || !this._exploreActive) return;
+        if (stale()) return;
         // Netwerk faalde: val terug op offline regio's/cache.
         const fallback = this._routesFromRegions(bounds);
         if (fallback.length && !this._selectedExplore) {
           this._exploreRoutes = fallback;
           this._exploreBounds = bounds;
-          MapView.renderExplore(fallback, (rt) => this._onExplorePick(rt));
+          MapView.renderExplore(fallback, onPick);
           this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
           $('explore-hint').textContent = `${fallback.length} routes (offline cache) — tik er één aan`;
         } else if (!this._selectedExplore) {
@@ -455,6 +503,13 @@
       } finally {
         if (mySeq === this._exploreSeq) $('explore-search').disabled = false;
       }
+    },
+
+    // Kleine concurrency-pool: draai `fn` over `items` met max `conc` tegelijk.
+    async _runPool(items, conc, fn) {
+      let i = 0;
+      const worker = async () => { while (i < items.length) await fn(items[i++]); };
+      await Promise.all(Array.from({ length: Math.min(conc, items.length) }, worker));
     },
 
     _onExplorePick(rt) {

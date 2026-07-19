@@ -40,7 +40,10 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   álle bewegwijzerde wandelroutes rond je, elk in **de kleur van de pijltjes** en met de
   **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege). Routes
   komen altijd **volledig** binnen: raakt een traject ook maar met één hoekje je
-  scherm, dan krijg je heel de route, met de officiële afstand. Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
+  scherm, dan krijg je heel de route, met de officiële afstand. Routes laden
+  **progressief** — eerst een snelle telling, daarna verschijnen ze één voor één op
+  de kaart, zodat je niet op alles hoeft te wachten en de kaart intussen bruikbaar
+  blijft (pannen, zoomen en een route kiezen kan gewoon tijdens het laden). Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
   dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
   Tik je op een **leeg stuk kaart**, dan wordt de keuze weer losgelaten en kan je
   verder zoeken. Het verkende gebied (kaart + routes) wordt **automatisch** offline
@@ -106,7 +109,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 287 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 305 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

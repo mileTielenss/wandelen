@@ -31,10 +31,13 @@
   }
 
   /** Snelle query: alle mirrors "hedged" parallel (2e start na 3,5s, 3e na 7s);
-      het eerste geldige antwoord wint en de rest wordt afgebroken. */
-  async function postQuery(q, timeoutMs) {
+      het eerste geldige antwoord wint en de rest wordt afgebroken. Een externe
+      `signal` breekt alle pogingen af (bv. bij een nieuwe zoekactie). */
+  async function postQuery(q, timeoutMs, signal) {
     timeoutMs = timeoutMs || 14000;
+    if (signal && signal.aborted) throw new Error('afgebroken');
     const stop = new AbortController();
+    if (signal) signal.addEventListener('abort', () => stop.abort(), { once: true });
     const attempts = ENDPOINTS.map((ep, i) => (async () => {
       if (i > 0) {
         await delay(i * 3500, stop.signal);
@@ -64,7 +67,7 @@
       return winner;
     } catch (_) {
       stop.abort();
-      throw new Error('Overpass niet bereikbaar');
+      throw new Error(signal && signal.aborted ? 'afgebroken' : 'Overpass niet bereikbaar');
     }
   }
 
@@ -217,11 +220,47 @@
       `);out geom qt;`;
   }
 
-  /** Alles van een gebied in één keer: { routes, nodes, horeca }. */
-  async function fetchArea(bounds) {
-    const data = await postQuery(areaQuery(bounds), 16000);
-    const { nodes, horeca } = parse(data);
-    return { routes: parseRoutes(data), nodes, horeca };
+  // areaQuery is de gecombineerde vorm; enkel nog gebruikt om de test-fixture te
+  // bouwen (tests/refresh-fixture.mjs). De app laadt progressief via de queries
+  // hieronder.
+
+  const ROUTE_FILTER = (bbox) =>
+    `rel["route"~"^(hiking|foot|walking)$"]["network"~"^(lwn|rwn)$"]["network:type"!="node_network"](${bbox});` +
+    `rel["route"~"^(hiking|foot|walking)$"][!"network"](${bbox});`;
+
+  // ---------- Progressief laden ----------
+  // Fase 1: enkel de route-ids + tags (piepklein, ~instant) zodat we meteen het
+  // aantal weten. Fase 2 (hieronder) haalt de geometrie per brokje op.
+  function listQuery(b) {
+    const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
+    return `[out:json][timeout:20];(${ROUTE_FILTER(bbox)});out tags qt;`;
+  }
+  async function fetchRouteList(bounds, signal) {
+    const data = await postQuery(listQuery(bounds), 12000, signal);
+    return (data.elements || [])
+      .filter((e) => e.type === 'relation')
+      .map((e) => ({ id: e.id, tags: e.tags || {} }));
+  }
+
+  // Fase 2: geometrie van een handvol relaties tegelijk (op id), zodat elk
+  // brokje apart en snel binnenkomt en getekend kan worden.
+  function geomQuery(ids) {
+    return `[out:json][timeout:25];rel(id:${ids.join(',')});out geom qt;`;
+  }
+  async function fetchRoutesByIds(ids, signal) {
+    if (!ids.length) return [];
+    return parseRoutes(await postQuery(geomQuery(ids), 16000, signal));
+  }
+
+  // Knooppunten + horeca apart (out center) — licht, en buiten België de enige
+  // bron. In verken-modus blokkeert dit het tekenen van routes niet.
+  async function fetchOverlaysArea(bounds, signal) {
+    const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
+    const q = `[out:json][timeout:20];(` +
+      `node["rwn_ref"](${bbox});node["lwn_ref"](${bbox});` +
+      `nwr["amenity"~"^(${HORECA})$"](${bbox});node["shop"="bakery"](${bbox});` +
+      `);out center qt;`;
+    return parse(await postQuery(q, 12000, signal));
   }
 
   function boundsFromCenter(lat, lng, radiusM) {
@@ -243,8 +282,9 @@
   }
 
   global.Overpass = {
-    fetchOverlays, fetchArea, boundsFromCoords, boundsFromCenter, FALLBACK,
+    fetchOverlays, fetchRouteList, fetchRoutesByIds, fetchOverlaysArea,
+    boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, geomQuery },
   };
 })(window);

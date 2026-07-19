@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (243 asserts) + coverage-rapport
+npm install && npm test         # testsuite (305 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -34,7 +34,7 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 | `js/db.js` | `DB` | IndexedDB-opslag: routes + regio's |
 | `js/komoot.js` | `Komoot` | Komoot-URL parsen, tour ophalen, naar routeformaat |
 | `js/gpx.js` | `GPX` | GPX (URL of bestand) parsen: trk → rte → wpt, naar routeformaat |
-| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn-relaties) |
+| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Progressief laden: lijst (`fetchRouteList`) → geometrie per brokje (`fetchRoutesByIds`) → overlays (`fetchOverlaysArea`); hedged mirrors + extern abort-`signal` |
 | `js/tiles.js` | `Tiles` | Kaartlagen-catalogus, tegelplanning (corridor/bbox), downloads naar Cache Storage |
 | `js/map.js` | `MapView`, `Geo` | Leaflet-kaart, route/overlays tekenen, locatie (1×/tracking), verken-laag, geometrie |
 | `js/app.js` | `App` | Schermen, flows, statuslampjes, auto-caching, voorkeuren, event-bedrading |
@@ -66,11 +66,27 @@ Route (IndexedDB store `routes`, keyPath `id`):
 
 Regio (store `regions`): `{ id: 'region-<lat*200>_<lng*200>' | 'explore-cache',
 bounds: {minLat,minLng,maxLat,maxLng}, routes: […], nodes: […], horeca: […], savedAt }`.
-Knooppunten + horeca + routes van het gebied komen uit **één** gecombineerde
-Overpass-aanvraag (`Overpass.fetchArea` → `areaQuery`: twee statements, `out center`
-voor punten en `out geom(bbox)` voor routes) en worden in verken-modus als vaste
-overlays getoond (`MapView.renderExploreOverlays`), ook offline via
-`_overlaysFromRegions`.
+Knooppunten + horeca + routes worden in verken-modus als vaste overlays getoond
+(`MapView.renderExploreOverlays`), ook offline via `_overlaysFromRegions`.
+
+**Progressief laden** (i.p.v. één trage gecombineerde aanvraag): `_exploreFetch`
+haalt routes in fasen op zodat er meteen iets zichtbaar is en de kaart bruikbaar blijft:
+1. **Fase 1 — lijst** (`Overpass.fetchRouteList` → `listQuery`, `out tags qt`):
+   piepklein, enkel route-ids + tags, zodat we direct het aantal weten.
+2. **Fase 2 — geometrie** (`Overpass.fetchRoutesByIds` → `geomQuery`, `rel(id:…);out geom qt`):
+   de ids in brokjes van 6, met een concurrency-pool van 3 (`_runPool`); élk brokje
+   verschijnt meteen op de kaart via `MapView.addExploreRoutes` (niet-destructief —
+   een reeds gekozen route en tikken blijven behouden).
+3. **Overlays** (`Overpass.fetchOverlaysArea` → `out center qt`): parallel gestart,
+   blokkeert het tekenen van routes niet.
+
+Een nieuwe zoekactie breekt de vorige stroom af via een `AbortController`
+(`this._exploreAbort`); `postQuery` neemt een extern `signal`. `_exploreFetch` bewaakt
+verouderde antwoorden met een `stale()`-check (`mySeq` vs `_exploreSeq`, plus
+`_exploreActive`). Bij een netwerkfout valt hij terug op opgeslagen regio's.
+(`areaQuery`/`out geom(bbox)` bestaan alleen nog voor `tests/refresh-fixture.mjs` en
+de fixture; de app gebruikt ze niet meer.)
+
 `explore-cache` = laatste verkenresultaat (max 7 dagen); `region-*` = automatisch
 offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eerst**:
 `_exploreFetch()` zonder `force` gebruikt verse `region-*`-routes zonder netwerk;
@@ -88,7 +104,7 @@ sleutel = volledige tegel-URL).
 | GPX-URL of -bestand (`GPX.importFromUrl` / `GPX.parse`) | route-import | Veel sites (natuurpunt, nuttelozeborden.be) sturen geen CORS-headers → zelfde proxy-fallback als Komoot. `wpt`-only bestanden = losse punten, verbonden in bestandsvolgorde (`gpxVorm:'punten'`) |
 | Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
 traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
-`distance`-tag) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
+`distance`-tag). **Progressief**: eerst een lichte lijst-query (`out tags`), dan de geometrie per brokje (`rel(id:…);out geom`) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20–25 s, client-timeout 12–16 s. Extern `signal` breekt alle pogingen af. Zoekgebied altijd klemmen (±0.16°) |
 | Carto Voyager `@2x` (standaard), Esri World Imagery, OpenTopoMap | kaarttegels | Vaste subdomeinen (geen `{s}`) zodat cache-URL's deterministisch zijn. **Fair use**: nooit bulk (heel België ≈ 20 GB — bewust niet ondersteund; corridor/regio volstaat) |
 
 ## Ontwerpprincipes (niet breken)

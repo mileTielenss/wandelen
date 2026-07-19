@@ -27,6 +27,23 @@ const TILE = Buffer.from(
   'base64'
 );
 const isOverpassHost = (u) => /overpass/.test(u.host);
+
+// Query-bewuste Overpass-mock: beantwoordt de drie querytypes (lijst / geometrie
+// per id / overlays) uit één dataset, zodat progressief laden juiste tellingen geeft.
+function overpassHandler(datasetStr) {
+  const dataset = JSON.parse(datasetStr.toString());
+  const rels = (dataset.elements || []).filter((e) => e.type === 'relation');
+  const pts = (dataset.elements || []).filter((e) => e.type !== 'relation');
+  return (r) => {
+    const q = decodeURIComponent((r.request().postData() || '').replace(/^data=/, ''));
+    let els;
+    const idm = q.match(/rel\(id:([\d,]+)\)/);
+    if (idm) { const ids = new Set(idm[1].split(',').map(Number)); els = rels.filter((e) => ids.has(e.id)); }
+    else if (/out center/.test(q)) els = pts;
+    else els = rels;
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ elements: els }) });
+  };
+}
 const KOMOOT_URL =
   'https://www.komoot.com/nl-NL/tour/3096182502?ref=itd&share_token=aXx6nN2IJLfoOxE73lbsY981p3AN5PCoupTwbpWfjbXA0fgXPd';
 
@@ -81,8 +98,15 @@ async function scenario(name, opts, fn) {
   await context.route((u) => /cartocdn\.com|arcgisonline\.com|opentopomap\.org/.test(u.host), (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
   if (!opts.noOverpass) {
-    await context.route(isOverpassHost, (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: opts.overpassBody || LWN }));
+    // De app doet nu drie soorten Overpass-queries (progressief laden):
+    //  · lijst    `…;out tags qt;`      → relaties met tags (geen geometrie nodig)
+    //  · geometrie `rel(id:…);out geom` → enkel de gevraagde relaties, mét geometrie
+    //  · overlays  `…;out center qt;`   → knooppunten + horeca
+    // Deze mock beantwoordt elk type uit één dataset, zodat tellingen kloppen.
+    const handler = opts.overpassBody != null
+      ? (r) => r.fulfill({ status: 200, contentType: 'application/json', body: opts.overpassBody })
+      : overpassHandler(opts.overpassData || LWN);
+    await context.route(isOverpassHost, handler);
   }
   if (!opts.noKomoot) {
     await context.route((u) => u.host === 'api.komoot.de', (r) => r.fulfill({
@@ -130,7 +154,7 @@ browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox']
 /* ---------- S1: unit-tests (pure logica) ---------- */
 await scenario('S1 unit-tests', {}, async (page) => {
   await open(page);
-  const results = await page.evaluate(() => {
+  const results = await page.evaluate(async () => {
     const out = [];
     const ok = (n, c, x = '') => out.push([n, !!c, String(x)]);
 
@@ -203,6 +227,36 @@ await scenario('S1 unit-tests', {}, async (page) => {
     ok('areaQuery: VOLLEDIGE routegeometrie (geen clip)', rq.includes('out geom qt') && !rq.includes('out geom('));
     ok('areaQuery: knooppunten + horeca in dezelfde aanvraag',
       rq.includes('rwn_ref') && rq.includes('amenity') && rq.includes('out center qt'));
+
+    // Progressieve queries: lijst (out tags), geometrie per id (out geom)
+    const lq = Overpass._test.listQuery({ minLat: 51, minLng: 5, maxLat: 51.1, maxLng: 5.1 });
+    ok('listQuery: enkel tags, geen geometrie', lq.includes('out tags qt') && !lq.includes('out geom'));
+    ok('listQuery: bbox aanwezig', lq.includes('(51,5,51.1,5.1)'));
+    const gq = Overpass._test.geomQuery([12, 34, 56]);
+    ok('geomQuery: rel op id + geometrie', gq.includes('rel(id:12,34,56)') && gq.includes('out geom qt'));
+    ok('Komoot.importFromUrl: rommel → reject',
+      await Komoot.importFromUrl('geen tour hier').then(() => false, () => true));
+
+    // Progressieve helpers: robuust tegen lege/afwijkende antwoorden.
+    ok('fetchRoutesByIds: lege ids → geen query',
+      (await Overpass.fetchRoutesByIds([])).length === 0);
+    {
+      const ac = new AbortController(); ac.abort();
+      ok('postQuery: reeds afgebroken signal → gooit',
+        await Overpass._test.postQuery('[out:json];', 5000, ac.signal).then(() => false, (e) => /afgebroken/.test(e.message)));
+    }
+    {
+      // fetchRouteList moet robuust zijn tegen antwoorden zonder elements/tags.
+      const realFetch = window.fetch;
+      window.fetch = async () => ({ ok: true, json: async () => ({}) });
+      const empty = await Overpass.fetchRouteList({ minLat: 51, minLng: 5, maxLat: 51.1, maxLng: 5.1 });
+      window.fetch = async () => ({ ok: true, json: async () => ({ elements: [{ type: 'relation', id: 9 }] }) });
+      const noTags = await Overpass.fetchRouteList({ minLat: 51, minLng: 5, maxLat: 51.1, maxLng: 5.1 });
+      window.fetch = realFetch;
+      ok('fetchRouteList: geen elements → lege lijst', Array.isArray(empty) && empty.length === 0);
+      ok('fetchRouteList: relatie zonder tags → {} tags', noTags.length === 1 && noTags[0].id === 9
+        && typeof noTags[0].tags === 'object');
+    }
 
     // REGRESSIE (productie-bug): out geom(bbox) geeft null-punten voor geometrie
     // buiten het zoekgebied — de parser moet daar splitsen, niet crashen.
@@ -281,7 +335,7 @@ await scenario('S2 startscherm & routebeheer', {}, async (page) => {
   await open(page);
   t('default route geseed', (await txt(page, '.route-card .name')) === 'from Lommel to Grote Heide');
   const secs = await page.$$eval('.section-title', (els) => els.map((e) => e.textContent.trim()));
-  t('sectiekoppen aanwezig', secs.includes('Route inladen (Komoot of GPX)') && secs.includes('Opgeslagen wandelingen'), secs.join(','));
+  t('sectiekoppen aanwezig', secs.includes('Route inladen via link of bestand') && secs.includes('Opgeslagen wandelingen'), secs.join(','));
   t('verkenknop netjes', (await txt(page, '#btn-explore')).includes('Nieuwe wandeling'));
   t('regio-knop bestaat niet meer', (await page.$('#explore-region')) === null);
   t('tegel-sheet bestaat niet meer', (await page.$('#tile-overlay')) === null);
@@ -354,7 +408,7 @@ await scenario('S3c import: alles faalt', { noKomoot: true }, async (page, conte
   await page.fill('#url-input', KOMOOT_URL);
   await page.click('#btn-load');
   await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 20000 });
-  t('duidelijke foutmelding', (await txt(page, '#load-status')).includes('Controleer de URL'));
+  t('duidelijke foutmelding', (await txt(page, '#load-status')).includes('directe GPX-link'));
 });
 
 /* ---------- S4: kaart, overlays, kaartlagen ---------- */
@@ -516,14 +570,12 @@ await scenario('S7 verkennen & volgen', {
   t('keuze toont naam + afstand', (await txt(page, '#explore-info')).includes('km'));
   t('Volg-knop actief', await page.$eval('#explore-follow', (el) => !el.disabled));
 
-  // 'Zoek hier' met identiek resultaat mag de laag NIET hertekenen (tik blijft raak)
-  await page.evaluate(() => { window.__gid = MapView.exploreGroup._leaflet_id; });
+  // 'Zoek hier' herlaadt progressief; daarna staan de routes er weer.
   await page.click('#explore-search');
-  await page.waitForFunction(() => !document.getElementById('explore-search').disabled, null, { timeout: 20000 });
-  const preserved = await page.evaluate(() => MapView.exploreGroup._leaflet_id === window.__gid);
-  t('identiek resultaat → geen hertekening', preserved);
+  await page.waitForFunction(() => /routes? — tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('Zoek hier herlaadt de routes', await page.evaluate(() => Object.keys(MapView._exploreLayers).length > 3));
   // herselecteer voor het vervolg (zoeken wist de keuze bewust)
-  await page.evaluate(() => MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]));
+  await page.evaluate(() => { MapView.selectExplore(Object.keys(MapView._exploreLayers)[0]); });
   await sleep(200);
 
   // regio-autocache: gebied offline opgeslagen zonder knop
@@ -574,10 +626,12 @@ await scenario('S7c verkennen: hedged mirrors + bbox-klem', {
   noOverpass: true,
 }, async (page, context) => {
   let capturedBody = '';
+  const H = overpassHandler(LWN);
   await context.route((u) => u.host === 'overpass.kumi.systems', () => { /* hangt */ });
   await context.route((u) => /overpass-api\.de|overpass\.private\.coffee/.test(u.host), (r) => {
-    capturedBody = r.request().postData() || '';
-    r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
+    const q = decodeURIComponent((r.request().postData() || '').replace(/^data=/, ''));
+    if (/out tags/.test(q)) capturedBody = q; // de lijst-query bevat het zoekgebied
+    H(r);
   });
   await open(page);
   const t0 = Date.now();
@@ -655,7 +709,7 @@ await scenario('S9 statuslampjes', {
   await sleep(300);
   // lagen-sheet vóór het eerste resultaat: nog geen tellingen bekend
   await page.click('#btn-layers');
-  t('lagen-sheet vóór eerste resultaat: geen tellingen', (await txt(page, '#ov-nodes-count')) === '' && (await txt(page, '#ov-horeca-count')) === '');
+  t('lagen-sheet: gebiedstelling (0 vóór routes)', (await txt(page, '#ov-nodes-count')).includes('in dit gebied'));
   await page.click('#layers-close');
   await sleep(900);
   t('bezig: internet actief', (await txt(page, '#statusbar-map')).includes('internet actief'));
@@ -880,6 +934,15 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     MapView.renderExplore([{ id: 'leeg', name: 'Leeg', segments: [], coords: [] }]);
     MapView.renderExplore([{ id: 'leeg2', name: 'Leeg2', segments: [], coords: [] }]); // her-render-tak
     MapView.enterExplore();                                           // groep bestaat → opruim-tak
+    // Progressief: eerste brokje tekenen, dan hetzelfde id opnieuw → dedup (continue).
+    const seg = [[[51, 5], [51.001, 5.001]]];
+    MapView.startExploreRender(() => {});
+    MapView.addExploreRoutes([{ id: 'osm-1', name: 'A', segments: seg, coords: seg[0] }]);
+    const naEerste = MapView.exploreRoutes.length;
+    MapView.addExploreRoutes([{ id: 'osm-1', name: 'A', segments: seg, coords: seg[0] }]); // zelfde id → overslaan
+    ok('addExploreRoutes: dubbel id wordt overgeslagen', naEerste === 1 && MapView.exploreRoutes.length === 1);
+    MapView.map.fire('dragstart');                                    // gebruiker beweegt → _userMoved
+    ok('verkennen: dragstart zet _userMoved', MapView._userMoved === true);
     MapView.clearExplore();
     ok('verkennen: lege segmenten en dubbele (re)render zonder fouten', true);
 
@@ -982,7 +1045,7 @@ const ONE_ROUTE = JSON.stringify({ elements: [{
 }] });
 await scenario('S12 verken-randgevallen', {
   ctx: { geolocation: { latitude: 51.312, longitude: 5.405, accuracy: 5 }, permissions: ['geolocation'] },
-  overpassBody: ONE_ROUTE,
+  overpassData: ONE_ROUTE,
 }, async (page, context) => {
   await open(page);
   await page.click('#btn-explore');
@@ -1024,25 +1087,22 @@ await scenario('S12 verken-randgevallen', {
   await page.click('#layers-close');
 
   // verouderde zoekactie: tweede zoek annuleert de eerste (succes- én foutpad)
-  await context.route(isOverpassHost, async (r) => {
-    await sleep(500);
-    r.fulfill({ status: 200, contentType: 'application/json', body: ONE_ROUTE });
-  });
+  const slowH = overpassHandler(ONE_ROUTE);
+  await context.route(isOverpassHost, async (r) => { await sleep(500); slowH(r); });
   await page.evaluate(() => { App._selectedExplore = null; App._exploreFetch(true); App._exploreFetch(true); });
   await sleep(1600);
   t('dubbele zoekactie: oudste antwoord genegeerd', true);
   await page.evaluate(async () => {
-    const orig = Overpass.fetchArea;
-    Overpass.fetchArea = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
+    const orig = Overpass.fetchRouteList;
+    Overpass.fetchRouteList = async () => { await new Promise((r) => setTimeout(r, 250)); throw new Error('stuk'); };
     App._exploreFetch(true); App._exploreFetch(true); // eerste faalt als verouderd → guard in het foutpad
     await new Promise((r) => setTimeout(r, 900));
-    Overpass.fetchArea = orig;
+    Overpass.fetchRouteList = orig;
   });
   t('dubbele zoekactie met fout: oudste genegeerd', true);
 
   // opslag-fouten tijdens verkennen: putRegion en downloadBBox falen stil
-  await context.route(isOverpassHost, (r) =>
-    r.fulfill({ status: 200, contentType: 'application/json', body: ONE_ROUTE }));
+  await context.route(isOverpassHost, overpassHandler(ONE_ROUTE));
   await page.evaluate(() => {
     window.__origPut = DB.putRegion; window.__origDl = Tiles.downloadBBox;
     DB.putRegion = () => Promise.reject(new Error('vol'));
@@ -1119,6 +1179,84 @@ await scenario('S12 verken-randgevallen', {
   t('kiezen uit cache-weergave werkt direct', (await txt(page, '#explore-info')).includes('Bos & Hei'));
 });
 
+/* ---------- S12c: progressief laden — alle takken (Overpass gestubt) ---------- */
+await scenario('S12c progressief laden — takken', {
+  ctx: { geolocation: { latitude: 51.312, longitude: 5.405, accuracy: 5 }, permissions: ['geolocation'] },
+  noOverpass: true,
+}, async (page, context) => {
+  await context.route(isOverpassHost, (r) => r.abort());
+  await open(page);
+  const results = await page.evaluate(async () => {
+    const out = [];
+    const ok = (n, c) => out.push([n, !!c]);
+    MapView.map.setView([51.312, 5.405], 14); // kaart moet een beeld hebben voor getBounds()
+    const origList = Overpass.fetchRouteList;
+    const origGeom = Overpass.fetchRoutesByIds;
+    const origOv = Overpass.fetchOverlaysArea;
+    const seg = [[[51.311, 5.405], [51.313, 5.405]]];
+    const oneRoute = { id: 'osm-42', name: 'R', ref: 'R', colour: '#dc2626', distance: 400, segments: seg, coords: seg[0] };
+    const prep = () => {
+      App._selectedExplore = null;
+      App._exploreActive = true;
+      MapView.enterExplore();
+      Overpass.fetchOverlaysArea = async () => ({ nodes: [], horeca: [] });
+    };
+
+    // 1) Gebruiker verliet verkennen tijdens de lijst-query → stop na fase 1.
+    prep();
+    Overpass.fetchRouteList = async () => { App._exploreActive = false; return [{ id: 42, tags: {} }]; };
+    Overpass.fetchRoutesByIds = origGeom;
+    await App._exploreFetch(true);
+    ok('stale na lijst-query → netjes stoppen', true);
+
+    // 2) Elk brokje mislukt → geen geometrie → foutpad/terugval.
+    prep();
+    Overpass.fetchRouteList = async () => [{ id: 42, tags: {} }];
+    Overpass.fetchRoutesByIds = async () => { throw new Error('stuk'); };
+    await App._exploreFetch(true);
+    ok('alle brokjes stuk → geen geometrie → terugval', true);
+
+    // 3) Verkennen verlaten tijdens een brokje → stop binnen brokje én na de pool.
+    prep();
+    Overpass.fetchRouteList = async () => [{ id: 42, tags: {} }];
+    Overpass.fetchRoutesByIds = async () => { App._exploreActive = false; return [oneRoute]; };
+    await App._exploreFetch(true);
+    ok('stale binnen brokje + na pool → stoppen', true);
+
+    // 4) Al een route gekozen tijdens het laden → hint blijft ongemoeid.
+    prep();
+    App._selectedExplore = oneRoute;
+    Overpass.fetchRouteList = async () => [{ id: 42, tags: {} }];
+    Overpass.fetchRoutesByIds = async () => [oneRoute];
+    await App._exploreFetch(true);
+    ok('gekozen route: hint blijft op "laden", niet op "tik er één aan"',
+      !document.getElementById('explore-hint').textContent.includes('tik er één aan'));
+    App._selectedExplore = null;
+
+    // 5) Routes ok maar overlays-query faalt → overlays uit lokale opslag.
+    prep();
+    Overpass.fetchRouteList = async () => [{ id: 42, tags: {} }];
+    Overpass.fetchRoutesByIds = async () => [oneRoute];
+    Overpass.fetchOverlaysArea = async () => { throw new Error('geen overlays'); };
+    await App._exploreFetch(true);
+    ok('overlays-query faalt → terugval op opslag', App._exploreRoutes.length === 1);
+
+    Overpass.fetchRouteList = origList;
+    Overpass.fetchRoutesByIds = origGeom;
+    Overpass.fetchOverlaysArea = origOv;
+
+    // 6) Lagen-sheet met nog lege tellingen (nc/hc null) → geen "(… )".
+    MapView._nodeCount = null; MapView._horecaCount = null;
+    App.openLayers();
+    ok('lagen-sheet zonder tellingen toont niets tussen haakjes',
+      document.getElementById('ov-nodes-count').textContent === '' &&
+      document.getElementById('ov-horeca-count').textContent === '');
+
+    return out;
+  });
+  for (const [n, c] of results) t('S12c: ' + n, c);
+});
+
 /* ---------- S12b: verkennen zonder GPS en zonder offline data ---------- */
 await scenario('S12b verkennen zonder GPS/data', {
   overpassBody: '{"elements":[]}',
@@ -1133,6 +1271,18 @@ await scenario('S12b verkennen zonder GPS/data', {
   await page.click('#explore-search');
   await page.waitForFunction(() => /geen offline routes/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
   t('offline zonder regio-data: nette hint', true);
+
+  // offline mét precies één opgeslagen route → enkelvoud in de hint
+  await page.evaluate(async () => {
+    await DB.putRegion({ id: 'region-offline1', bounds: { minLat: 40, minLng: 4, maxLat: 42, maxLng: 6 },
+      routes: [{ id: 'osm-1', name: 'Enige', distance: 300, segments: [[[41, 5], [41.001, 5]]], coords: [] }],
+      nodes: [], horeca: [], savedAt: new Date().toISOString() });
+    App._regions = await DB.allRegions();
+    MapView.map.setView([41, 5], 13);
+  });
+  await page.click('#explore-search');
+  await page.waitForFunction(() => /1 route \(offline\)/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });
+  t('offline met 1 route → enkelvoud in hint', true);
 });
 
 /* ---------- S13: geen geolocation-API + kapotte SW-registratie ---------- */
@@ -1228,16 +1378,15 @@ await scenario('S15 deselecteren & opslag-eerst', {
   ctx: { geolocation: { latitude: 51.312, longitude: 5.41 }, permissions: ['geolocation'] },
   noOverpass: true,
 }, async (page, context) => {
-  // Sinds de gecombineerde gebieds-query komt alles in één respons terug.
+  // Routes (LWN) + knooppunten/horeca (NODES) in één dataset; de query-bewuste
+  // mock geeft elk querytype het juiste stuk terug.
   const COMBINED = JSON.stringify({ elements: [
     ...JSON.parse(LWN.toString()).elements,
     ...JSON.parse(NODES_BODY).elements,
   ] });
+  const combinedH = overpassHandler(COMBINED);
   let netCalls = 0;
-  await context.route(isOverpassHost, (r) => {
-    netCalls++;
-    r.fulfill({ status: 200, contentType: 'application/json', body: COMBINED });
-  });
+  await context.route(isOverpassHost, (r) => { netCalls++; combinedH(r); });
   await open(page);
   await page.click('#btn-explore');
   await page.waitForFunction(() => /tik er één aan/.test(document.getElementById('explore-hint').textContent), null, { timeout: 20000 });

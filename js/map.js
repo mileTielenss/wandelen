@@ -198,21 +198,44 @@
       if (!this._exploreTap) this._exploreTap = (e) => this._exploreNearestTap(e);
       this.map.off('click', this._exploreTap);
       this.map.on('click', this._exploreTap);
+      // Zodra de gebruiker zelf de kaart beweegt, stoppen we met auto-inzoomen op
+      // binnenkomende routes (anders springt de kaart onder zijn vinger weg).
+      this._userMoved = false;
+      if (!this._exploreMoveTap) this._exploreMoveTap = () => { this._userMoved = true; };
+      this.map.off('dragstart', this._exploreMoveTap);
+      this.map.on('dragstart', this._exploreMoveTap);
     },
 
+    // Volledige (niet-progressieve) render: leegmaken en alles in één keer.
     renderExplore(routes, onPick) {
+      this.startExploreRender(onPick);
+      this.addExploreRoutes(routes || []);
+    },
+
+    // Progressief: begin met een lege laag; brokjes komen via addExploreRoutes.
+    startExploreRender(onPick) {
       this.exploreMode = true;
-      this.exploreRoutes = routes || [];
+      this.exploreRoutes = [];
       this._onExplorePick = onPick;
       this.selectedExploreId = null;
+      this._userMoved = false;
+      this._exploreFitted = false;
       if (this.exploreGroup) { this.exploreGroup.remove(); }
       this.exploreGroup = L.layerGroup().addTo(this.map);
       this._exploreLayers = {};
+    },
 
+    // Voeg een brokje routes toe zonder de bestaande te wissen — zo blijft een
+    // reeds gekozen route staan en gaan tikken niet verloren tijdens het laden.
+    addExploreRoutes(routes) {
+      if (!routes || !routes.length || !this.exploreGroup) return;
       const bounds = [];
-      this.exploreRoutes.forEach((rt, idx) => {
+      for (const rt of routes) {
+        if (this._exploreLayers[rt.id]) continue; // al getekend
+        const idx = this.exploreRoutes.length;
         const col = rt.colour || Overpass.FALLBACK[idx % Overpass.FALLBACK.length];
         rt._col = col;
+        this.exploreRoutes.push(rt);
         // Onzichtbare brede lijnen eronder = grote raakzone; je hoeft niet exact te tikken.
         const hits = rt.segments.map((seg) => L.polyline(seg, {
           color: '#000', weight: 26, opacity: 0, _hit: true,
@@ -226,11 +249,13 @@
         this._exploreLayers[rt.id] = grp;
         const gb = grp.getBounds();
         if (gb.isValid()) bounds.push(gb);
-      });
-      // Alleen op de routes inzoomen als we (nog) geen locatie tonen.
-      if (bounds.length && !this.locMarker) {
+      }
+      // Alleen op de routes inzoomen bij het éérste brokje, en enkel als de
+      // gebruiker nog niet zelf de kaart bewoog of een locatie toont.
+      if (bounds.length && !this._userMoved && !this.locMarker && !this._exploreFitted) {
         const fg = bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0]));
         this.map.fitBounds(fg, { padding: [40, 40] });
+        this._exploreFitted = true;
       }
     },
 
@@ -284,6 +309,7 @@
       this.selectedExploreId = null;
       if (this.exploreGroup) { this.exploreGroup.remove(); this.exploreGroup = null; }
       if (this._exploreTap) this.map.off('click', this._exploreTap);
+      if (this._exploreMoveTap) this.map.off('dragstart', this._exploreMoveTap);
       // Ook de gebieds-overlays (knooppunten/horeca) opruimen.
       if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
       if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
