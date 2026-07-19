@@ -1,0 +1,757 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Nuttelozebordenroute Genk</name>
+    <description>Ontdek 69 nutteloze borden in Genk. Meer info: https://www.nuttelozeborden.be/wandelingen</description>
+    <Style id="icon-1899-0288D1-nodesc-normal">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="icon-1899-0288D1-nodesc-highlight">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="icon-1899-0288D1-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1899-0288D1-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1899-0288D1-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="line-0288D1-5000-normal">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>5</width>
+      </LineStyle>
+    </Style>
+    <Style id="line-0288D1-5000-highlight">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>7.5</width>
+      </LineStyle>
+    </Style>
+    <StyleMap id="line-0288D1-5000">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#line-0288D1-5000-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#line-0288D1-5000-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Folder>
+      <name>Route</name>
+      <Placemark>
+        <name>Nutteloze Borden Genk</name>
+        <description><![CDATA[Statistieken zijn berekend op basis van geïmporteerde gegevens<br><br>Afstand: 4,0 km<br>Minimale hoogte: 67 m<br>Maximale hoogte: 87 m<br>Totale stijging: 20 m<br>Totale daling: 19 m]]></description>
+        <styleUrl>#line-0288D1-5000</styleUrl>
+        <LineString>
+          <tessellate>1</tessellate>
+          <coordinates>
+            5.4963054,50.9668635,0
+            5.4957654,50.9667135,0
+            5.4964954,50.9664635,0
+            5.4964754,50.9661035,0
+            5.4960554,50.9661135,0
+            5.4959954,50.9655835,0
+            5.4952954,50.9655735,0
+            5.4950954,50.9652635,0
+            5.4971354,50.9651535,0
+            5.4986954,50.9650935,0
+            5.4998454,50.9649135,0
+            5.4998654,50.9652935,0
+            5.5010354,50.9652735,0
+            5.5015754,50.9649535,0
+            5.5018359,50.9651887,0
+            5.5022452,50.96519,0
+            5.5023908,50.9651061,0
+            5.5026084,50.9652416,0
+            5.5028154,50.9651135,0
+            5.5030454,50.9646535,0
+            5.5029554,50.9642735,0
+            5.5002254,50.9644535,0
+            5.4992154,50.9637035,0
+            5.4982654,50.9634935,0
+            5.4976754,50.9615635,0
+            5.4974054,50.9612235,0
+            5.4948354,50.9593335,0
+            5.4936354,50.9591035,0
+            5.4919854,50.9584635,0
+            5.4909854,50.9586035,0
+            5.4898354,50.9585735,0
+            5.4903754,50.9595235,0
+            5.4906554,50.9595435,0
+            5.4908054,50.9596935,0
+            5.4908054,50.9602535,0
+            5.4906354,50.9603535,0
+            5.4906654,50.9608235,0
+            5.4909954,50.9607235,0
+            5.4927454,50.9609135,0
+            5.4924054,50.9622835,0
+            5.4930454,50.9624235,0
+            5.4926054,50.9624735,0
+            5.4927354,50.9632835,0
+            5.4946954,50.9634935,0
+            5.4946454,50.9643735,0
+            5.4929054,50.9643335,0
+            5.4930054,50.9645835,0
+            5.4930554,50.9661635,0
+            5.4965254,50.9661035,0
+          </coordinates>
+        </LineString>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Stops</name>
+      <Placemark>
+        <name>1. Gevel Stadhuis</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4951,50.9651826,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>2. Asbask Stadhuis</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4950953,50.9652655,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>3. Glijbaan</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4951007,50.9651385,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>4. KROK</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4953151,50.9655598,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>5. Vuilnisbak Stadsplein</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4959643,50.9655321,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>6. Bibliotheek</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4958785,50.9655946,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>7. Poëzierek in de bib</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.495511,50.9657888,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>8. Bankje Stadsplein 23</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4968874,50.9651509,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>9. Boom</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.496995,50.965149,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>10. Elektriciteitskast</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4987669,50.9650031,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>11. Schommels</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4992579,50.964914,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>12. Bankje Marktstraat 2</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5009734,50.9652645,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>13. Koffiebar Bunker</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5022609,50.9651669,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name><![CDATA[14. Stripwinkel "Het Negende Labyrint"]]></name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5027101,50.9651737,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>15. Fontein</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5029685,50.9649774,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>16. Bankje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5029513,50.9648929,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>17. Betonblokken Parking</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5031685,50.9645846,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>18. BRAUW</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5028815,50.9643752,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>19. Bloemperkje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5022039,50.9643303,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>20. Parkeermeter</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5021784,50.964359,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>21. Muurtje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5021489,50.9643623,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>22. MAU Kattencafé</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5014786,50.964406,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>23. Tribune Crypteplein</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5010011,50.9643348,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>24. Verkeersbordpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.5007436,50.9643213,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>25. Trappen Schepen Noël Bijnensplein</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4997336,50.96395,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>26. Achterkant muur</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4993892,50.9637323,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>27. Verkeersbordpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4982976,50.9635575,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>28. Oud Gemeentehuis</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4984143,50.9634984,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>29. Barbershop Cesar</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4980521,50.9633089,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>30. Haag aan parkeerterrein</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4979065,50.9627105,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>31. Houten paaltjes</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.497669,50.9614826,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>32. Elektriciteitskast</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4972002,50.9611222,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>33. Bankje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4954224,50.9598308,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>34. Kapel</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4952212,50.9597269,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>35. Onder stoel in kapel</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4951917,50.9597379,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>36. Houten paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.495299,50.9596999,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>37. Fitnesstoestel</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4955207,50.9596527,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name><![CDATA[38. Paal "Speelzone"]]></name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4954111,50.9595392,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>39. Verkeersbordpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.49483,50.95932,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>40. Bankje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4948371,50.9592884,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>41. Houten paal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4948183,50.9593028,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>42. Betonnen paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4936524,50.9591022,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>43. Infobord Melberg</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4919269,50.9584699,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>44. Infopaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4918075,50.9585155,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>45. Bankje in bos</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4909957,50.9585795,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>46. Infopaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4898584,50.9586048,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>47. Boomstronk</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.489971,50.9588312,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>48. Geknotte boom</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.49037,50.95951,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>49. Houten paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4906096,50.9595294,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>50. Houten paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4908295,50.9607262,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>51. Houten paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4927071,50.9608951,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>52. Verkeersbordpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4924,50.96227,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>53. Verkeersspiegel</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4926538,50.9624572,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>54. Paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4927558,50.9626058,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>55. Paaltje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4927987,50.9629403,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>56. Elektriciteitskast</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4947092,50.963515,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>57. Betonnen bloembak</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4946624,50.9643228,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>58. Betonnen bank</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4940157,50.9643551,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>59. Lantaarnpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.493,50.96457,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>60. Vogelhuisje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4930183,50.9648746,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>61. Vijver</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4930254,50.965094,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>62. Uitkijkpunt vijver</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4930147,50.9652375,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>63. Speeltuin</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4929436,50.9656209,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>64. Slagboom</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4930477,50.9659753,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>65. Stalplaats vuilnisbakken</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4927445,50.9661104,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>66. Aanwijsborden</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4935027,50.9662989,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>67. Lantaarnpaal</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4958926,50.9668239,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>68. Bankje</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4956994,50.9667496,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>69. Knop verkeerslicht</name>
+        <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            5.4964666,50.9663188,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>

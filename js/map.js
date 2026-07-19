@@ -107,7 +107,7 @@
           iconSize: [30, 30], iconAnchor: [15, 15],
         }),
         keyboard: false,
-      }).bindTooltip('Wandelknooppunt ' + n.ref, { direction: 'top' }));
+      }).bindTooltip(n.name ? escapeHtml(n.name) : 'Wandelknooppunt ' + n.ref, { direction: 'top' }));
     },
 
     _horecaMarkers(horeca) {

@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (305 asserts) + coverage-rapport
+npm install && npm test         # testsuite (329 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -34,6 +34,7 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 | `js/db.js` | `DB` | IndexedDB-opslag: routes + regio's |
 | `js/komoot.js` | `Komoot` | Komoot-URL parsen, tour ophalen, naar routeformaat |
 | `js/gpx.js` | `GPX` | GPX (URL of bestand) parsen: trk → rte → wpt, naar routeformaat |
+| `js/kml.js` | `KML` | KML / Google My Maps parsen: LineString → route, Point → genummerde punten (bv. bordjes). Bron voor routes die enkel als "digitaal routeplan" bestaan |
 | `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Progressief laden: lijst (`fetchRouteList`) → geometrie per brokje (`fetchRoutesByIds`) → overlays (`fetchOverlaysArea`); hedged mirrors + extern abort-`signal` |
 | `js/tiles.js` | `Tiles` | Kaartlagen-catalogus, tegelplanning (corridor/bbox), downloads naar Cache Storage |
 | `js/map.js` | `MapView`, `Geo` | Leaflet-kaart, route/overlays tekenen, locatie (1×/tracking), verken-laag, geometrie |
@@ -54,7 +55,7 @@ Iconen in `icons/` zijn statisch gegenereerd (pure-Python PNG-writer; eenmalig).
 Route (IndexedDB store `routes`, keyPath `id`):
 ```js
 { id: 'komoot-<tourId>' | 'osm-<relId>',   // bron bepaalt prefix
-  source: 'komoot' | 'osm' | 'gpx',   // gpx: id = 'gpx-'+hash(coords); gpxVorm 'track'|'route'|'punten'
+  source: 'komoot' | 'osm' | 'gpx' | 'kml',   // gpx/kml: id = '<bron>-'+hash(coords); gpxVorm 'track'|'route'|'punten'
   name, sport, distance /*m*/, elevationUp, elevationDown, duration,
   coords: [[lat, lng, alt], …],            // volledige polyline
   nodes:  [{ ref, lat, lng }, …],          // wandelknooppunten (Overpass)
@@ -93,7 +94,7 @@ offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eers
 “Zoek hier” roept `_exploreFetch(true)` aan en gaat wél naar Overpass.
 
 Overig: `localStorage['wandelen-prefs']` = `{ basemap, showNodes, showHoreca }`.
-Cache Storage: `wandelen-app-v3` (shell), `wandelen-tiles-v1` (alle kaartlagen door elkaar,
+Cache Storage: `wandelen-app-v4` (shell), `wandelen-tiles-v1` (alle kaartlagen door elkaar,
 sleutel = volledige tegel-URL).
 
 ## Externe diensten (en hun beperkingen)
@@ -102,6 +103,7 @@ sleutel = volledige tegel-URL).
 |---|---|---|
 | `api.komoot.de/v007/tours/<id>?…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
 | GPX-URL of -bestand (`GPX.importFromUrl` / `GPX.parse`) | route-import | Veel sites (natuurpunt, nuttelozeborden.be) sturen geen CORS-headers → zelfde proxy-fallback als Komoot. `wpt`-only bestanden = losse punten, verbonden in bestandsvolgorde (`gpxVorm:'punten'`) |
+| KML-URL of Google My Maps-link (`KML.importFromUrl` / `KML.parse`) | route-import | Google My Maps-viewerlink → publieke KML-export (`/maps/d/kml?mid=…&forcekml=1`); zelfde proxy-fallback (Google stuurt geen CORS). `LineString` → route, `Point`-placemarks → `nodes` met `ref`=bordnummer + `name`. Zet `overlaysFetched:true` als er eigen punten zijn (niet overschrijven met OSM). Zo werkt de **Nutteloze Borden**-route van Genk (69 bordjes, geen GPX) toch |
 | Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
 traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
 `distance`-tag). **Progressief**: eerst een lichte lijst-query (`out tags`), dan de geometrie per brokje (`rel(id:…);out geom`) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20–25 s, client-timeout 12–16 s. Extern `signal` breekt alle pogingen af. Zoekgebied altijd klemmen (±0.16°) |
@@ -131,7 +133,7 @@ traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit 
 ## Tests — 100% coverage is de norm
 
 `tests/run.mjs` = eigen runner (Playwright-core + headless Chromium, geen testframework).
-Scenario's S1–S18: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
+Scenario's S1–S19: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
 `tests/fixtures/area-real.json` = **bevroren écht Overpass-antwoord** (Hageven, incl.
 null-punten en alle rariteiten) waar de parsers elke run tegen draaien; ververs hem
 met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de parsers.
@@ -190,7 +192,7 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
 
 App-shell = **stale-while-revalidate**: gebruikers krijgen updates automatisch bij
 het volgende bezoek (één herstart van de app na deploy). Tegels = cache-first.
-`APP_CACHE`-versie (`wandelen-app-v3`) hoef je door SWR meestal niet te bumpen;
+`APP_CACHE`-versie (`wandelen-app-v4`) hoef je door SWR meestal niet te bumpen;
 doe het wél als je bestanden **verwijdert/hernoemt** of `APP_ASSETS` wijzigt.
 Voeg je een nieuw statisch bestand toe → zet het in `APP_ASSETS` in `sw.js`
 én laad het in `index.html`.

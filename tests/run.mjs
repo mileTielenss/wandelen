@@ -838,6 +838,46 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     ok('gpx: naam uit URL', GPX._test.nameFromUrl('https://x.be/s/Nutteloze-gpx.gpx') === 'Nutteloze gpx');
     ok('gpx: naam uit leeg pad', GPX._test.nameFromUrl('/') === '');
 
+    // KML-parser: routelijn + genummerde punten (bv. de bordjes)
+    const K = (x, n) => { try { return KML.parse(x, n); } catch (e) { return { err: e.message }; } };
+    const kLine = K('<kml><Document><name>Bordenroute</name>' +
+      '<Placemark><LineString><coordinates>5.0,51.0,10 5.0,51.001,20 5.002,51.001,15</coordinates></LineString></Placemark>' +
+      '<Placemark><name>1. Start</name><Point><coordinates>5.0,51.0,0</coordinates></Point></Placemark>' +
+      '<Placemark><name>Los bord</name><Point><coordinates>5.001,51.001,0</coordinates></Point></Placemark>' +
+      '</Document></kml>');
+    ok('kml: lijn → coords + naam uit Document', kLine.coords.length === 3 && kLine.name === 'Bordenroute'
+      && kLine.gpxVorm === 'track' && kLine.source === 'kml' && kLine.id.startsWith('kml-'));
+    ok('kml: hoogtewinst/-verlies uit alt', kLine.elevationUp === 10 && kLine.elevationDown === 5,
+      `${kLine.elevationUp}/${kLine.elevationDown}`);
+    ok('kml: eigen punten → overlaysFetched (niet overschrijven)', kLine.overlaysFetched === true);
+    ok('kml: geen Document-naam, geen fallback → KML-route',
+      K('<kml><Placemark><LineString><coordinates>5,51,0 5,51.001,0</coordinates></LineString></Placemark></kml>').name === 'KML-route');
+    ok('kml: punten → genummerde nodes (ref uit naam, anders volgorde)',
+      kLine.nodes.length === 2 && kLine.nodes[0].ref === '1' && kLine.nodes[0].name === '1. Start'
+      && kLine.nodes[1].ref === '2', JSON.stringify(kLine.nodes.map((n) => n.ref)));
+    const kPts = K('<kml><Document><name>Enkel punten</name>' +
+      '<Placemark><name>A</name><Point><coordinates>5.0,51.0</coordinates></Point></Placemark>' +
+      '<Placemark><name>B</name><Point><coordinates>5.0,51.001</coordinates></Point></Placemark>' +
+      '</Document></kml>');
+    ok('kml: geen lijn → punten verbonden (punten-vorm)', kPts.gpxVorm === 'punten' && kPts.coords.length === 2);
+    ok('kml: lege LineString → val terug op punten',
+      K('<kml><Document><name>x</name><Placemark><LineString></LineString></Placemark>' +
+        '<Placemark><name>1</name><Point><coordinates>5,51</coordinates></Point></Placemark>' +
+        '<Placemark><name>2</name><Point><coordinates>5,51.001</coordinates></Point></Placemark></Document></kml>').gpxVorm === 'punten');
+    ok('kml: kapotte XML → fout', /geen geldige KML/.test(K('<kml><Document>').err || ''));
+    ok('kml: niets bruikbaars → fout', /Geen bruikbare/.test(K('<kml><Document><name>Leeg</name></Document></kml>').err || ''));
+    ok('kml: fallback-naam bij naamloze Document',
+      K('<kml><Document><Placemark><LineString><coordinates>5,51,0 5,51.001,0</coordinates></LineString></Placemark></Document></kml>', 'viavia').name === 'viavia');
+    ok('kml: isKmlUrl (.kml én Google My Maps)',
+      KML.isKmlUrl('https://x.be/r.kml') && KML.isKmlUrl('https://www.google.com/maps/d/viewer?mid=ABC123&ll=1,2')
+      && !KML.isKmlUrl('https://komoot.com/tour/1'));
+    ok('kml: My Maps-viewer → kml-export-URL',
+      KML._test.mymapsKmlUrl('https://www.google.com/maps/d/u/0/viewer?mid=XYZ&ll=1%2C2&z=16')
+        === 'https://www.google.com/maps/d/kml?mid=XYZ&forcekml=1');
+    ok('kml: gewone URL is geen My Maps', KML._test.mymapsKmlUrl('https://x.be/r.kml') === null);
+    ok('kml: naam uit URL', KML._test.nameFromUrl('https://x.be/s/Genk-route.kml') === 'Genk route');
+    ok('kml: naam uit leeg pad', KML._test.nameFromUrl('/') === '');
+
     // Komoot: alternatieve tour_id-vorm
     ok('parseUrl: ?tour_id=', (Komoot.parseUrl('https://x.be/?tour_id=1234567') || {}).id === '1234567');
 
@@ -1614,6 +1654,62 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
   await page.click('#btn-gpx');
   await page.waitForFunction(() => /Lommel|bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('📂 opent bestandskiezer en laadt', true);
+});
+
+/* ---------- S19: KML / Google My Maps-import (Nutteloze Borden Genk) ---------- */
+await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
+  const GENK_KML = readFileSync(path.join(ROOT, 'tests/fixtures/genk-mymaps.kml'), 'utf8');
+  await open(page);
+
+  // Google My Maps-viewerlink → app haalt de KML-export op (host www.google.com)
+  await context.route((u) => u.host === 'www.google.com', (r) => {
+    const ok = /\/maps\/d\/kml\?mid=107C_ri1EnHn3t/.test(r.request().url());
+    r.fulfill(ok
+      ? { status: 200, contentType: 'application/xml', body: GENK_KML }
+      : { status: 404, body: 'nee' });
+  });
+  await page.fill('#url-input', 'https://www.google.com/maps/d/u/0/viewer?mid=107C_ri1EnHn3t-esIZOroBucXEbBbOc&ll=50.96%2C5.50&z=16');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Nuttelozebordenroute Genk/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
+  t('My Maps-link → route geopend', true);
+  t('afstand ± 3,9 km', (await txt(page, '#map-route-meta')).includes('km'));
+  // de 69 genummerde bordjes staan als badges op de kaart, met hun naam als tooltip
+  await page.waitForSelector('.kp-badge', { timeout: 10000 });
+  const badges = await page.$$eval('.kp-badge', (els) => els.map((e) => e.textContent));
+  t('genummerde bord-badges getekend', badges.length > 20 && badges.includes('1'), `${badges.length} badges`);
+  const tip = await page.evaluate(() => {
+    const m = MapView.nodeLayer.getLayers()[0];
+    return m ? m.getTooltip().getContent() : '';
+  });
+  t('tooltip toont bordnaam i.p.v. "Wandelknooppunt"', !/Wandelknooppunt/.test(tip) && tip.length > 2, tip);
+  await page.click('#btn-back');
+  await sleep(200);
+  t('KML-route in de lijst', (await page.$$eval('.route-card .name', (els) => els.map((e) => e.textContent))).some((n) => /Genk/.test(n)));
+
+  // directe .kml-URL met CORS-blokkade → proxy-fallback (zoals GPX)
+  const SIMPLE = '<kml><Document><name>Proxy-KML</name><Placemark><LineString><coordinates>5.0,51.0,0 5.0,51.002,0 5.002,51.002,0</coordinates></LineString></Placemark></Document></kml>';
+  await context.route((u) => u.host === 'geblokkeerd.be', (r) => r.abort());
+  await context.route((u) => /corsproxy\.io/.test(u.host), (r) =>
+    r.fulfill({ status: 200, contentType: 'application/xml', body: SIMPLE }));
+  await page.fill('#url-input', 'https://geblokkeerd.be/route.kml');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Proxy-KML/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
+  t('CORS-geblokkeerde KML via proxy-fallback', true);
+  await page.click('#btn-back');
+
+  // alle bronnen falen → nette fout (HTTP-fout-tak + throw lastErr)
+  await context.route((u) => u.host === 'stuk.be', (r) => r.fulfill({ status: 500, body: 'nee' }));
+  await context.route((u) => /corsproxy\.io|allorigins/.test(u.host), (r) => r.fulfill({ status: 500, body: 'nee' }));
+  await page.fill('#url-input', 'https://stuk.be/w.kml');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 25000 });
+  t('onbereikbare KML → nette fout', true);
+
+  // onbekende link (geen gpx/kml/komoot) → duidelijke melding
+  await page.fill('#url-input', 'https://ergens.be/pagina');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Google My Maps/.test(document.getElementById('load-status').textContent), null, { timeout: 25000 });
+  t('onbekende link → noemt Komoot/GPX/KML', true);
 });
 
 /* ================================================================== */

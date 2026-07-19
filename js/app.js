@@ -178,15 +178,14 @@
       }
     },
 
-    // Elke link aanvaarden en de juiste bron kiezen: .gpx → GPX, een Komoot-tour
-    // → Komoot, en anders eerst GPX proberen (veel “interessante” links zijn een
-    // direct GPX-bestand) met Komoot als terugval.
+    // Elke link aanvaarden en de juiste bron kiezen: .gpx → GPX, een KML- of
+    // Google My Maps-link → KML, een Komoot-tour → Komoot. Anders meteen een
+    // duidelijke boodschap i.p.v. gokken (en op een willekeurige link hangen).
     async _importFromUrl(url) {
       if (GPX.isGpxUrl(url)) return GPX.importFromUrl(url);
+      if (KML.isKmlUrl(url)) return KML.importFromUrl(url);
       if (Komoot.parseUrl(url)) return Komoot.importFromUrl(url);
-      // Geen .gpx en geen Komoot-tour → meteen een duidelijke boodschap i.p.v.
-      // gokken (en op het netwerk blijven hangen op een willekeurige link).
-      throw new Error('Onbekende link — plak een Komoot-tour of een directe GPX-link (.gpx)');
+      throw new Error('Onbekende link — plak een Komoot-tour, een GPX-link (.gpx) of een Google My Maps-/KML-link');
     },
 
     async loadFromFile(file) {

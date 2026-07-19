@@ -1,7 +1,7 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
-const APP_CACHE = 'wandelen-app-v3';
+const APP_CACHE = 'wandelen-app-v4';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];
@@ -15,6 +15,7 @@ const APP_ASSETS = [
   'js/db.js',
   'js/komoot.js',
   'js/gpx.js',
+  'js/kml.js',
   'js/overpass.js',
   'js/tiles.js',
   'js/map.js',
