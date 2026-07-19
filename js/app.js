@@ -159,43 +159,60 @@
       }
     },
 
-    // ---------- Importeren van Komoot ----------
+    // ---------- Importeren: Komoot-URL, GPX-URL of GPX-bestand ----------
     async loadFromInput() {
       const input = $('url-input');
       const url = input.value.trim();
-      if (!url) { this.setLoadStatus('Plak eerst een Komoot-URL.', 'error'); return; }
+      if (!url) { this.setLoadStatus('Plak eerst een Komoot- of GPX-URL.', 'error'); return; }
       $('btn-load').disabled = true;
       this.setLoadStatus('Route ophalen…', '');
       try {
-        const route = await Komoot.importFromUrl(url);
-        const existing = await DB.get(route.id);
-        if (existing) {
-          // Behoud alles wat lokaal al opgebouwd is: eigen naam, offline
-          // tegels én de opgehaalde knooppunten/horeca.
-          route.name = existing.name;
-          route.tilesCached = existing.tilesCached;
-          route.tileDetail = existing.tileDetail;
-          route.tileMaps = existing.tileMaps;
-          route.nodes = existing.nodes;
-          route.horeca = existing.horeca;
-          route.overlaysFetched = existing.overlaysFetched;
-        }
-        const existed = !!existing;
-        await DB.put(route);
+        const route = GPX.isGpxUrl(url)
+          ? await GPX.importFromUrl(url)
+          : await Komoot.importFromUrl(url);
         input.value = '';
-        this.setLoadStatus('', '');
-        await this.refreshList();
-        this.toast(existed
-          ? `“${route.name}” stond er al — bijgewerkt en geopend`
-          : `“${route.name}” ingeladen`);
-        // Toon de route meteen — zo doet “Laden” altijd zichtbaar iets.
-        this.openRoute(route.id);
+        await this._saveImported(route);
       } catch (e) {
         this.setLoadStatus('Mislukt: ' + e.message +
           '. Controleer de URL (met share_token) en je internetverbinding.', 'error');
       } finally {
         $('btn-load').disabled = false;
       }
+    },
+
+    async loadFromFile(file) {
+      this.setLoadStatus('GPX-bestand lezen…', '');
+      try {
+        const route = GPX.parse(await file.text(), file.name.replace(/\.gpx$/i, ''));
+        await this._saveImported(route);
+      } catch (e) {
+        this.setLoadStatus('Mislukt: ' + e.message, 'error');
+      }
+    },
+
+    async _saveImported(route) {
+      const existing = await DB.get(route.id);
+      if (existing) {
+        // Behoud alles wat lokaal al opgebouwd is: eigen naam, offline
+        // tegels én de opgehaalde knooppunten/horeca.
+        route.name = existing.name;
+        route.tilesCached = existing.tilesCached;
+        route.tileDetail = existing.tileDetail;
+        route.tileMaps = existing.tileMaps;
+        route.nodes = existing.nodes;
+        route.horeca = existing.horeca;
+        route.overlaysFetched = existing.overlaysFetched;
+      }
+      await DB.put(route);
+      this.setLoadStatus('', '');
+      await this.refreshList();
+      this.toast(existing
+        ? `“${route.name}” stond er al — bijgewerkt en geopend`
+        : (route.gpxVorm === 'punten'
+          ? `“${route.name}”: losse punten verbonden (geen gevolgd pad)`
+          : `“${route.name}” ingeladen`));
+      // Toon de route meteen — zo doet “Laden” altijd zichtbaar iets.
+      this.openRoute(route.id);
     },
 
     setLoadStatus(msg, kind) {
@@ -770,6 +787,11 @@
       $('btn-load').addEventListener('click', () => this.loadFromInput());
       $('url-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') this.loadFromInput();
+      });
+      $('btn-gpx').addEventListener('click', () => $('gpx-file').click());
+      $('gpx-file').addEventListener('change', (e) => {
+        if (e.target.files.length) this.loadFromFile(e.target.files[0]);
+        e.target.value = '';
       });
       $('btn-about').addEventListener('click', () => this._show('about-overlay'));
       $('about-close').addEventListener('click', () => this._hide('about-overlay'));

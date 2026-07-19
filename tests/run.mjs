@@ -281,7 +281,7 @@ await scenario('S2 startscherm & routebeheer', {}, async (page) => {
   await open(page);
   t('default route geseed', (await txt(page, '.route-card .name')) === 'from Lommel to Grote Heide');
   const secs = await page.$$eval('.section-title', (els) => els.map((e) => e.textContent.trim()));
-  t('sectiekoppen aanwezig', secs.includes('Komoot-URL inladen') && secs.includes('Opgeslagen wandelingen'), secs.join(','));
+  t('sectiekoppen aanwezig', secs.includes('Route inladen (Komoot of GPX)') && secs.includes('Opgeslagen wandelingen'), secs.join(','));
   t('verkenknop netjes', (await txt(page, '#btn-explore')).includes('Nieuwe wandeling'));
   t('regio-knop bestaat niet meer', (await page.$('#explore-region')) === null);
   t('tegel-sheet bestaat niet meer', (await page.$('#tile-overlay')) === null);
@@ -756,6 +756,27 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     ok('parseRoutes: zonder naam/ref → Wandelroute', prNone[0].name === 'Wandelroute');
     ok('boundsFromCoords: expliciete marge',
       Math.abs(Overpass.boundsFromCoords([[51, 5, 0]], 0.05).minLat - 50.95) < 1e-9);
+
+    // GPX-parser: alle vormen en foutpaden
+    const T = (x, n) => { try { return GPX.parse(x, n); } catch (e) { return { err: e.message }; } };
+    const trk = T('<gpx><trk><name>Lus</name><trkseg><trkpt lat="51" lon="5"><ele>10</ele></trkpt><trkpt lat="51.001" lon="5"><ele>16</ele></trkpt></trkseg><trkseg><trkpt lat="51.002" lon="5"><ele>12</ele></trkpt></trkseg></trk></gpx>');
+    ok('gpx: track over meerdere segmenten', trk.coords.length === 3 && trk.gpxVorm === 'track' && trk.name === 'Lus');
+    ok('gpx: hoogtewinst en -verlies', trk.elevationUp === 6 && trk.elevationDown === 4, `${trk.elevationUp}/${trk.elevationDown}`);
+    const rte = T('<gpx><rte><name>Plan</name><rtept lat="51" lon="5"/><rtept lat="51.001" lon="5"/></rte></gpx>');
+    ok('gpx: rte-fallback', rte.gpxVorm === 'route' && rte.name === 'Plan');
+    const wpt = T('<gpx><metadata><name>Bordjes</name></metadata><wpt lat="51" lon="5"/><wpt lat="51.001" lon="5"/></gpx>');
+    ok('gpx: losse punten verbonden', wpt.gpxVorm === 'punten' && wpt.name === 'Bordjes' && wpt.distance > 100);
+    ok('gpx: fallback-naam', T('<gpx><trk><trkseg><trkpt lat="51" lon="5"/><trkpt lat="51.1" lon="5"/></trkseg></trk></gpx>', 'bestand').name === 'bestand');
+    ok('gpx: zonder naam → GPX-route', T('<gpx><wpt lat="51" lon="5"/><wpt lat="51.1" lon="5"/></gpx>').name === 'GPX-route');
+    ok('gpx: kapotte XML → fout', /geen geldig/.test(T('<gpx><trk>').err || ''));
+    ok('gpx: te weinig punten → fout', /Geen bruikbare/.test(T('<gpx><wpt lat="51" lon="5"/></gpx>').err || ''));
+    ok('gpx: ongeldige coördinaat overgeslagen',
+      T('<gpx><wpt lat="x" lon="5"/><wpt lat="51" lon="5"/><wpt lat="51.1" lon="5"/></gpx>').coords.length === 2);
+    ok('gpx: id stabiel', T('<gpx><wpt lat="51" lon="5"/><wpt lat="51.1" lon="5"/></gpx>').id ===
+      T('<gpx><wpt lat="51" lon="5"/><wpt lat="51.1" lon="5"/></gpx>').id);
+    ok('gpx: isGpxUrl', GPX.isGpxUrl('https://x.be/pad/route.GPX?y=1') && !GPX.isGpxUrl('https://komoot.com/tour/1'));
+    ok('gpx: naam uit URL', GPX._test.nameFromUrl('https://x.be/s/Nutteloze-gpx.gpx') === 'Nutteloze gpx');
+    ok('gpx: naam uit leeg pad', GPX._test.nameFromUrl('/') === '');
 
     // Komoot: alternatieve tour_id-vorm
     ok('parseUrl: ?tour_id=', (Komoot.parseUrl('https://x.be/?tour_id=1234567') || {}).id === '1234567');
@@ -1349,6 +1370,95 @@ await scenario('S17b landdata onbereikbaar', {
   await page.click('#btn-explore');
   await sleep(1200);
   t('bootstrap met kapotte JSON is stil', true);
+});
+
+/* ---------- S18: GPX-import (bestand + URL + proxy-fallback) ---------- */
+await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
+  const GPX_XML = readFileSync(path.join(ROOT, 'tests/fixtures/test-route.gpx'), 'utf8');
+  // Unieke coördinaten per bron → verschillende id's (id = hash van coords).
+  const gpxAt = (lat, name) => `<gpx><trk><name>${name}</name><trkseg>` +
+    `<trkpt lat="${lat}" lon="5.31"/><trkpt lat="${lat + 0.002}" lon="5.312"/><trkpt lat="${lat + 0.004}" lon="5.314"/>` +
+    `</trkseg></trk></gpx>`;
+  await open(page);
+
+  // via bestand (volledig offline pad)
+  await page.setInputFiles('#gpx-file', path.join(ROOT, 'tests/fixtures/test-route.gpx'));
+  await page.waitForFunction(() => /Testlus Lommel/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('GPX-bestand → route geopend', true);
+  t('afstand berekend', (await txt(page, '#map-route-meta')).includes('km'));
+  await page.click('#btn-back');
+  await sleep(300);
+  t('GPX-route in de lijst', (await page.$$eval('.route-card .name', (els) => els.map((e) => e.textContent))).includes('Testlus Lommel'));
+
+  // her-import behoudt eigen naam
+  await page.evaluate(async () => {
+    const routes = await DB.all();
+    const g = routes.find((r) => r.source === 'gpx');
+    g.name = 'Mijn bordjeslus';
+    await DB.put(g);
+  });
+  await page.setInputFiles('#gpx-file', path.join(ROOT, 'tests/fixtures/test-route.gpx'));
+  await page.waitForFunction(() => /Mijn bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('her-import behoudt eigen naam', true);
+  await page.click('#btn-back');
+
+  // via URL (direct)
+  await context.route((u) => u.host === 'voorbeeld.be', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: gpxAt(50.10, 'URL-lus') }));
+  await page.fill('#url-input', 'https://voorbeeld.be/tochten/mooie-lus.gpx');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /URL-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('GPX-URL → route geopend', true);
+  await page.click('#btn-back');
+
+  // via URL met CORS-blokkade → proxy-fallback (zoals nuttelozeborden.be)
+  await context.route((u) => u.host === 'geblokkeerd.be', (r) => r.abort());
+  await context.route((u) => /corsproxy\.io/.test(u.host), (r) =>
+    r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: gpxAt(50.20, 'Proxy-lus') }));
+  await page.fill('#url-input', 'https://geblokkeerd.be/w.gpx');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Proxy-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('CORS-geblokkeerde GPX via proxy-fallback', true);
+  await page.click('#btn-back');
+
+  // losse-punten-GPX: nette melding + toch bruikbaar
+  const WPT = '<gpx><metadata><name>Bordjes Perk</name></metadata><wpt lat="51.23" lon="5.31"/><wpt lat="51.232" lon="5.312"/><wpt lat="51.234" lon="5.314"/></gpx>';
+  await context.route((u) => u.host === 'bordjes.be', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: WPT }));
+  await page.fill('#url-input', 'https://bordjes.be/locaties.gpx');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /losse punten verbonden/.test(document.getElementById('toast').textContent), null, { timeout: 15000 });
+  t('waypoint-GPX: eerlijke melding + route', (await txt(page, '#map-route-name')).includes('Bordjes Perk'));
+  await page.click('#btn-back');
+
+  // alle bronnen falen → nette fout; kapot bestand → nette fout
+  await context.route((u) => /allorigins/.test(u.host), (r) => r.fulfill({ status: 500, body: 'nee' }));
+  await context.route((u) => /corsproxy\.io/.test(u.host), (r) => r.fulfill({ status: 500, body: 'nee' }));
+  await context.route((u) => u.host === 'stuk.be', (r) => r.abort());
+  await page.fill('#url-input', 'https://stuk.be/w.gpx');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  t('onbereikbare GPX-URL → nette fout', true);
+  const bad = path.join(ROOT, 'tests/fixtures/tour.json'); // geen XML
+  await page.setInputFiles('#gpx-file', bad);
+  await page.waitForFunction(() => /geen geldig GPX/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  t('kapot bestand → nette fout', true);
+
+  // naam uit <metadata> als trk/rte naamloos is (we staan nog op de lijst)
+  await context.route((u) => u.host === 'meta.be', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/gpx+xml',
+      body: '<gpx><metadata><name>Enkel-metadata</name></metadata><trk><trkseg><trkpt lat="50.40" lon="5.31"/><trkpt lat="50.402" lon="5.312"/></trkseg></trk></gpx>' }));
+  await page.fill('#url-input', 'https://meta.be/w.gpx');
+  await page.click('#btn-load');
+  await page.waitForFunction(() => /Enkel-metadata/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('gpx: naam uit metadata bij naamloze trk', true);
+  await page.click('#btn-back');
+
+  // 📂-knop opent de bestandskiezer én laadt het gekozen bestand
+  page.once('filechooser', (fc) => fc.setFiles(path.join(ROOT, 'tests/fixtures/test-route.gpx')));
+  await page.click('#btn-gpx');
+  await page.waitForFunction(() => /Lommel|bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  t('📂 opent bestandskiezer en laadt', true);
 });
 
 /* ================================================================== */

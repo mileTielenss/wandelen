@@ -75,6 +75,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
 }
 .list-title { margin: 14px 18px 2px; }
 .actions .loader-bar { padding: 0; }
+.gpx-btn { padding: 12px 13px; font-size: 17px; flex: none; }
 
 .divider {
   display: flex; align-items: center; gap: 12px; margin: 12px 2px;

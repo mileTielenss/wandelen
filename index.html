@@ -33,11 +33,13 @@
     </header>
 
     <section class="actions">
-      <h2 class="section-title">Komoot-URL inladen</h2>
+      <h2 class="section-title">Route inladen (Komoot of GPX)</h2>
       <div class="loader-bar">
         <input id="url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-               placeholder="Plak een Komoot-tour URL…" aria-label="Komoot URL" />
+               placeholder="Komoot- of GPX-URL…" aria-label="Komoot- of GPX-URL" />
         <button id="btn-load" class="primary">Laden</button>
+        <button id="btn-gpx" class="ghost gpx-btn" title="GPX-bestand kiezen" aria-label="GPX-bestand kiezen">📂</button>
+        <input id="gpx-file" type="file" accept=".gpx,application/gpx+xml" hidden />
       </div>
       <p id="load-status" class="load-status" hidden></p>
 
@@ -57,7 +59,7 @@
     <div id="route-list" class="route-list" aria-live="polite"></div>
 
     <p id="list-empty" class="empty" hidden>
-      Nog geen routes. Plak hierboven een Komoot-URL en tik op <strong>Laden</strong>.
+      Nog geen routes. Plak hierboven een Komoot- of GPX-URL, of kies een GPX-bestand via 📂.
     </p>
 
     <footer class="hint">
@@ -158,7 +160,7 @@
       <ul class="about-list">
         <li><strong>Volledig offline.</strong> Routes en kaart worden lokaal opgeslagen.</li>
         <li><strong>Zuinig.</strong> GPS staat standaard uit. <em>Toon locatie</em> doet één meting; <em>Volg</em> is een aparte stand.</li>
-        <li><strong>Komoot.</strong> Plak een tour-URL met <code>share_token</code> om de route in te laden.</li>
+        <li><strong>Importeren.</strong> Plak een Komoot-URL (met <code>share_token</code>) of GPX-URL, of kies een GPX-bestand via 📂.</li>
         <li><strong>Offline kaart.</strong> Open een route en tik <em>⬇ Offline</em> om de tegels op te slaan.</li>
       </ul>
       <p class="tiny">
@@ -177,6 +179,7 @@
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/db.js"></script>
   <script src="js/komoot.js"></script>
+  <script src="js/gpx.js"></script>
   <script src="js/overpass.js"></script>
   <script src="js/tiles.js"></script>
   <script src="js/map.js"></script>

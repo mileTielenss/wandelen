@@ -14,6 +14,7 @@ const APP_ASSETS = [
   'css/style.css',
   'js/db.js',
   'js/komoot.js',
+  'js/gpx.js',
   'js/overpass.js',
   'js/tiles.js',
   'js/map.js',

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="wandelen-test" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Meta-naam</name></metadata>
+  <trk><name>Testlus Lommel</name>
+    <trkseg>
+      <trkpt lat="51.2300" lon="5.3100"><ele>40.0</ele></trkpt>
+      <trkpt lat="51.2320" lon="5.3120"><ele>46.5</ele></trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="51.2340" lon="5.3140"><ele>44.0</ele></trkpt>
+      <trkpt lat="51.2360" lon="5.3160"></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

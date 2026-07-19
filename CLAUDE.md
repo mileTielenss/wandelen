@@ -33,6 +33,7 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 |---|---|---|
 | `js/db.js` | `DB` | IndexedDB-opslag: routes + regio's |
 | `js/komoot.js` | `Komoot` | Komoot-URL parsen, tour ophalen, naar routeformaat |
+| `js/gpx.js` | `GPX` | GPX (URL of bestand) parsen: trk → rte → wpt, naar routeformaat |
 | `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn-relaties) |
 | `js/tiles.js` | `Tiles` | Kaartlagen-catalogus, tegelplanning (corridor/bbox), downloads naar Cache Storage |
 | `js/map.js` | `MapView`, `Geo` | Leaflet-kaart, route/overlays tekenen, locatie (1×/tracking), verken-laag, geometrie |
@@ -53,7 +54,7 @@ Iconen in `icons/` zijn statisch gegenereerd (pure-Python PNG-writer; eenmalig).
 Route (IndexedDB store `routes`, keyPath `id`):
 ```js
 { id: 'komoot-<tourId>' | 'osm-<relId>',   // bron bepaalt prefix
-  source: 'komoot' | 'osm',
+  source: 'komoot' | 'osm' | 'gpx',   // gpx: id = 'gpx-'+hash(coords); gpxVorm 'track'|'route'|'punten'
   name, sport, distance /*m*/, elevationUp, elevationDown, duration,
   coords: [[lat, lng, alt], …],            // volledige polyline
   nodes:  [{ ref, lat, lng }, …],          // wandelknooppunten (Overpass)
@@ -83,7 +84,8 @@ sleutel = volledige tegel-URL).
 
 | Dienst | Gebruik | Let op |
 |---|---|---|
-| `api.komoot.de/v007/tours/<id>?_embedded=coordinates&share_token=…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
+| `api.komoot.de/v007/tours/<id>?…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
+| GPX-URL of -bestand (`GPX.importFromUrl` / `GPX.parse`) | route-import | Veel sites (natuurpunt, nuttelozeborden.be) sturen geen CORS-headers → zelfde proxy-fallback als Komoot. `wpt`-only bestanden = losse punten, verbonden in bestandsvolgorde (`gpxVorm:'punten'`) |
 | Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
 traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
 `distance`-tag) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20 s, client-timeout 14–16 s. Zoekgebied altijd klemmen (±0.16°) |
@@ -113,7 +115,7 @@ traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit 
 ## Tests — 100% coverage is de norm
 
 `tests/run.mjs` = eigen runner (Playwright-core + headless Chromium, geen testframework).
-Scenario's S1–S17: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
+Scenario's S1–S18: unit-tests in-page, alle UI-flows, alle foutpaden via foutinjectie.
 `tests/fixtures/area-real.json` = **bevroren écht Overpass-antwoord** (Hageven, incl.
 null-punten en alle rariteiten) waar de parsers elke run tegen draaien; ververs hem
 met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de parsers.

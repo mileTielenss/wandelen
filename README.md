@@ -10,9 +10,13 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 ## Wat de app doet
 
 - **Startscherm** met een URL-balk + **Laden**-knop en een lijst van je opgeslagen routes.
-- **Komoot-import**: plak een URL zoals
-  `https://www.komoot.com/nl-nl/tour/3096182502?share_token=…` en de route laadt automatisch in.
-  Meerdere routes inladen kan; ze blijven bewaard.
+- **Route inladen — Komoot of GPX**: plak een Komoot-tour-URL
+  (`https://www.komoot.com/nl-nl/tour/…?share_token=…`), een **GPX-URL**, of kies een
+  **GPX-bestand** via 📂. Handig voor routes van bv. natuurpunt, RouteYou of de
+  Nutteloze Borden-wandelingen (nuttelozeborden.be). Sites die geen GPX-download over
+  CORS toelaten, worden automatisch via een proxy opgehaald. Bevat een GPX enkel losse
+  **punten** (zoals bordjes-locaties), dan verbindt de app ze in bestandsvolgorde — met
+  een eerlijke melding dat het geen gevolgd pad is. Meerdere routes inladen kan; ze blijven bewaard.
 - **Openen & hernoemen**: tik een route open op de kaart, of gebruik het `⋯`-menu
   (of lang indrukken) om te **hernoemen** of te **verwijderen**.
 - **Kaart** met de volledige route om te valideren dat je nog op het juiste pad zit.
@@ -102,7 +106,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 262 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 287 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
@@ -124,7 +128,7 @@ wordt functioneel getest via de offline-herstart-scenario's.
 | Tegels | Carto Voyager @2x (standaard), Esri World Imagery, OpenTopoMap — corridor-/regiogewijs in de Cache Storage |
 | Opslag | IndexedDB (routes + regio's), Cache Storage (app-shell + tegels), localStorage (voorkeuren) |
 | Offline | Service worker: app-shell stale-while-revalidate, tegels cache-first |
-| Routebronnen | Komoot publieke tour-API (`api.komoot.de/v007/tours/…`) en OSM/Overpass (wandelroutes lwn/rwn, knooppunten, horeca) |
+| Routebronnen | Komoot publieke tour-API, **GPX** (URL of bestand), en OSM/Overpass (wandelroutes lwn/rwn, knooppunten, horeca) |
 
 Voor architectuur, werkafspraken en uitbreiden: zie **[CLAUDE.md](CLAUDE.md)**.
 
