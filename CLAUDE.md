@@ -207,9 +207,12 @@ Voeg je een nieuw statisch bestand toe → zet het in `APP_ASSETS` in `sw.js`
 
 ## Uitbreidingsideeën (eerder besproken, nog niet gebouwd)
 
+- **GR-routes** (Grote Routepaden / Grande Randonnée) in "Nieuwe wandeling". Nu filtert
+  `ROUTE_FILTER` (js/overpass.js) enkel `lwn|rwn` (lokaal/regionaal); GR's zitten als
+  `network=nwn|iwn` in OSM. Idee: die netwerken erbij (evt. als aparte laag/kleur, want
+  het zijn lange lijnen i.p.v. lussen). Gevraagd door de gebruiker — "voor later".
 - **Hoogteprofiel** onder de kaart (alt zit al in `coords[i][2]`).
 - **Kilometermarkeringen** langs de route (cumulatieve afstand zit in `MapView._cum`).
-- **GPX-import/-export** naast Komoot.
 - Meerdere Overpass-gebieden slimmer samenvoegen (nu: losse `region-*`-records).
 - Routebeschrijving/bochtaanwijzingen uit de Komoot-`path`-data.
 
