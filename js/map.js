@@ -379,13 +379,7 @@
         (pos) => {
           this._setGps('fix');
           this._updateLocation(pos, true);
-          if (this._followed) {
-            this.map.setView(
-              [pos.coords.latitude, pos.coords.longitude],
-              Math.max(this.map.getZoom(), 16),
-              { animate: true }
-            );
-          }
+          this._followTo(pos.coords.latitude, pos.coords.longitude);
         },
         (err) => {
           if (err && err.code === 1) {
@@ -404,6 +398,17 @@
       this._staleTimer = setInterval(this._staleCheck.bind(this), 10000);
       // Zodra de gebruiker zelf pant, stoppen we met auto-centreren (zuiniger + minder storend)
       this.map.once('dragstart', () => { this._followed = false; });
+    },
+
+    // Auto-centreren tijdens tracking, maar zuinig: enkel bijsturen als je uit het
+    // centrale deel van het scherm dreigt te lopen. Anders schuift de kaart bij élke
+    // fix weg en kan je geen bordje/knooppunt aantikken (het doelwit beweegt).
+    _followTo(lat, lng) {
+      if (!this._followed) return;
+      const ll = [lat, lng];
+      if (!this.map.getBounds().pad(-0.25).contains(ll)) {
+        this.map.setView(ll, Math.max(this.map.getZoom(), 16), { animate: true });
+      }
     },
 
     _staleCheck() {
@@ -454,7 +459,9 @@
       }
       if (acc > 0) {
         if (!this.accCircle) {
-          this.accCircle = L.circle(ll, { radius: acc, color: '#2563eb', weight: 1, fillOpacity: 0.08 }).addTo(this.map);
+          // interactive:false → de cirkel vangt geen tikken af, zodat je de
+          // bordjes/knooppunten eronder gewoon kan aantikken.
+          this.accCircle = L.circle(ll, { radius: acc, color: '#2563eb', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(this.map);
         } else {
           this.accCircle.setLatLng(ll).setRadius(acc);
         }

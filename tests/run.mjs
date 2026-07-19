@@ -528,6 +528,27 @@ await scenario('S6 tracking & rode-bol-bug', {
   await page.click('#btn-track');
   await sleep(300);
   t('➤-knop togglet tracking uit', await page.$eval('.loc-dot', (el) => !el.classList.contains('tracking')));
+
+  // Auto-centreren tijdens tracking is zuinig: enkel bijsturen bij drift naar de
+  // rand, zodat je punten kan aantikken zonder dat de kaart wegschuift.
+  await page.evaluate(() => { MapView.map.setView([51.234514, 5.321518], 16, { animate: false }); MapView._followed = true; });
+  t('tracking: fix in het centrum → kaart blijft staan (aantikbaar)', await page.evaluate(() => {
+    const c0 = MapView.map.getCenter();
+    MapView._followTo(51.234514, 5.321518);
+    const c1 = MapView.map.getCenter();
+    return Math.abs(c0.lat - c1.lat) < 1e-5 && Math.abs(c0.lng - c1.lng) < 1e-5;
+  }));
+  await page.evaluate(() => MapView._followTo(51.30, 5.42)); // ver buiten het scherm
+  await page.waitForFunction(() => Math.abs(MapView.map.getCenter().lat - 51.30) < 0.03, null, { timeout: 5000 });
+  t('tracking: drift naar de rand → kaart stuurt bij', true);
+  t('tracking: volgen uit → geen hercentrering', await page.evaluate(() => {
+    MapView._followed = false;
+    MapView.map.setView([51.234514, 5.321518], 16, { animate: false });
+    const c0 = MapView.map.getCenter();
+    MapView._followTo(52, 6);
+    const c1 = MapView.map.getCenter();
+    return Math.abs(c0.lat - c1.lat) < 1e-5 && Math.abs(c0.lng - c1.lng) < 1e-5;
+  }));
 });
 
 await scenario('S6b tracking geweigerd', {
@@ -1568,7 +1589,11 @@ await scenario('S17b landdata onbereikbaar', {
 });
 
 /* ---------- S18: GPX-import (bestand + URL + proxy-fallback) ---------- */
-await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
+await scenario('S18 GPX-import', { noKomoot: true, noOverpass: true }, async (page, context) => {
+  // GPX-import heeft geen OSM-overlays nodig; Overpass afknippen houdt elke
+  // route-opening licht (geen extra fetch/rendering) én voorkomt dat de
+  // "Knooppunten geladen"-toast de import-melding overschrijft.
+  await context.route(isOverpassHost, (r) => r.abort());
   const GPX_XML = readFileSync(path.join(ROOT, 'tests/fixtures/test-route.gpx'), 'utf8');
   // Unieke coördinaten per bron → verschillende id's (id = hash van coords).
   const gpxAt = (lat, name) => `<gpx><trk><name>${name}</name><trkseg>` +

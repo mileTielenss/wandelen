@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (332 asserts) + coverage-rapport
+npm install && npm test         # testsuite (336 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -185,6 +185,11 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
 - **`setView` met animatie + meteen `getBounds()` = oude grenzen** — de zoekactie
   na een GPS-fix zocht daardoor naast je locatie. Locatie-sprongen doen we met
   `animate: false`.
+- **Aantikbaarheid tijdens tracking**: (1) auto-centreren mag niet bij élke fix
+  (`MapView._followTo` stuurt enkel bij als je uit de centrale ~50% van het scherm
+  loopt) — anders schuift de kaart constant en beweegt je doelwit weg; (2) de
+  nauwkeurigheidscirkel is `interactive:false`, anders vangt hij tikken af over zijn
+  hele oppervlak en kan je de bordjes/knooppunten eronder niet aantikken.
 - De **service worker cachet 200-antwoorden** van eigen bestanden (SWR): een test
   die per aanroep ander gedrag wil, moet met het niet-gecachete geval (bv. 404)
   beginnen.
