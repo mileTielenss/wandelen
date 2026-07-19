@@ -14,8 +14,8 @@
       this.prefs = this._loadPrefs();
       MapView.init((mode) => this._onMapMode(mode), {
         basemap: this.prefs.basemap,
-        showNodes: this.prefs.showNodes,
-        showHoreca: this.prefs.showHoreca,
+        nodesRoute: this.prefs.nodesRoute, nodesAll: this.prefs.nodesAll,
+        horecaRoute: this.prefs.horecaRoute, horecaAll: this.prefs.horecaAll,
       });
       this._wire();
       this.updateStatus();
@@ -90,8 +90,12 @@
       try { p = JSON.parse(localStorage.getItem('wandelen-prefs') || '{}'); } catch (_) {}
       return {
         basemap: p.basemap || 'voyager',
-        showNodes: p.showNodes !== false,
-        showHoreca: p.showHoreca !== false,
+        // "op route" standaard aan (toont enkel wat op de geopende route ligt),
+        // "alle" standaard uit (anders staat de kaart vol knooppunten/koffie).
+        nodesRoute: p.nodesRoute !== false,
+        nodesAll: p.nodesAll === true,
+        horecaRoute: p.horecaRoute !== false,
+        horecaAll: p.horecaAll === true,
       };
     },
     _savePrefs() {
@@ -506,6 +510,8 @@
       this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
       const overlaysP = Overpass.fetchOverlaysArea(bounds, ctrl.signal).catch(() => null);
 
+      // Achtergrond-spinner: de app blijft bruikbaar terwijl er geladen wordt.
+      $('explore-spin').hidden = false;
       try {
         // Fase 1 — lichte lijst-query (ids + centrum + tags): meteen de lijst tonen.
         this._setExploreCount('routes zoeken…');
@@ -583,7 +589,7 @@
           this._setExploreCount('kon routes niet laden — probeer “Zoek hier”');
         }
       } finally {
-        if (mySeq === this._exploreSeq) $('explore-search').disabled = false;
+        if (mySeq === this._exploreSeq) { $('explore-search').disabled = false; $('explore-spin').hidden = true; }
       }
     },
 
@@ -802,12 +808,13 @@
       const bm = this.prefs.basemap;
       const radio = document.querySelector(`input[name="basemap"][value="${bm}"]`);
       if (radio) radio.checked = true;
-      $('ov-nodes').checked = this.prefs.showNodes;
-      $('ov-horeca').checked = this.prefs.showHoreca;
+      $('ov-nodes-route').checked = this.prefs.nodesRoute;
+      $('ov-nodes-all').checked = this.prefs.nodesAll;
+      $('ov-horeca-route').checked = this.prefs.horecaRoute;
+      $('ov-horeca-all').checked = this.prefs.horecaAll;
       const nc = MapView._nodeCount, hc = MapView._horecaCount;
-      const waar = MapView.exploreMode ? 'in dit gebied' : 'op deze route';
-      $('ov-nodes-count').textContent = nc != null ? `(${nc} ${waar})` : '';
-      $('ov-horeca-count').textContent = hc != null ? `(${hc} ${MapView.exploreMode ? 'in dit gebied' : 'in de buurt'})` : '';
+      $('ov-nodes-count').textContent = nc != null ? `(${nc} zichtbaar)` : '';
+      $('ov-horeca-count').textContent = hc != null ? `(${hc} zichtbaar)` : '';
       $('overlays-note').textContent = (_current && !_current.overlaysFetched && !navigator.onLine)
         ? 'Knooppunten/horeca nog niet geladen — verbind één keer met internet.'
         : 'Overlays worden bij de route offline bewaard.';
@@ -821,8 +828,10 @@
       if (_current) this.autoCacheTiles(_current);
     },
     setOverlay(kind, on) {
-      if (kind === 'nodes') this.prefs.showNodes = on;
-      if (kind === 'horeca') this.prefs.showHoreca = on;
+      if (kind === 'nodesRoute') this.prefs.nodesRoute = on;
+      if (kind === 'nodesAll') this.prefs.nodesAll = on;
+      if (kind === 'horecaRoute') this.prefs.horecaRoute = on;
+      if (kind === 'horecaAll') this.prefs.horecaAll = on;
       this._savePrefs();
       MapView.setOverlayVisible(kind, on);
     },
@@ -948,8 +957,10 @@
       for (const radio of document.querySelectorAll('input[name="basemap"]')) {
         radio.addEventListener('change', (e) => { if (e.target.checked) this.setBasemap(e.target.value); });
       }
-      $('ov-nodes').addEventListener('change', (e) => this.setOverlay('nodes', e.target.checked));
-      $('ov-horeca').addEventListener('change', (e) => this.setOverlay('horeca', e.target.checked));
+      $('ov-nodes-route').addEventListener('change', (e) => this.setOverlay('nodesRoute', e.target.checked));
+      $('ov-nodes-all').addEventListener('change', (e) => this.setOverlay('nodesAll', e.target.checked));
+      $('ov-horeca-route').addEventListener('change', (e) => this.setOverlay('horecaRoute', e.target.checked));
+      $('ov-horeca-all').addEventListener('change', (e) => this.setOverlay('horecaAll', e.target.checked));
 
       $('btn-explore').addEventListener('click', () => this.startExplore());
       $('explore-search').addEventListener('click', () => {

@@ -440,14 +440,16 @@ await scenario('S4 kaart & overlays & lagen', {}, async (page) => {
   await sleep(1200);
   t('routelijn getekend (canvas)', await page.evaluate(() =>
     !!MapView.line && !!document.querySelector('#map canvas')));
-  t('knooppunt-badges', (await page.$$('.kp-badge')).length > 5);
+  t('knooppunt-badges op route (standaard aan)', (await page.$$('.kp-badge')).length > 5);
+  const onRouteNodes = (await page.$$('.kp-badge')).length;
   const emoji = await page.$eval('.horeca-pin', (el) => el.textContent);
-  t('horeca-pins met ☕', emoji === '☕');
+  t('koffie-pins op route met ☕ (standaard aan)', emoji === '☕');
   t('meta toont afstand + punten', (await txt(page, '#map-route-meta')).includes('km'));
 
-  // kaartlagen-sheet
+  // kaartlagen-sheet: vier overlay-schakelaars
   await page.click('#btn-layers');
-  t('tellingen in sheet', (await txt(page, '#ov-nodes-count')).includes('op deze route'));
+  t('tellingen in sheet', (await txt(page, '#ov-nodes-count')).includes('zichtbaar'));
+  t('vier overlay-checkboxes', (await page.$$('#layers-overlay input[type=checkbox]')).length === 4);
   await page.check('input[name="basemap"][value="satellite"]');
   await sleep(600);
   const src = await page.$eval('#map img.leaflet-tile', (el) => el.src);
@@ -455,10 +457,19 @@ await scenario('S4 kaart & overlays & lagen', {}, async (page) => {
   await page.check('input[name="basemap"][value="topo"]');
   await sleep(600);
   t('topo-tegels actief', (await page.$eval('#map img.leaflet-tile', (el) => el.src)).includes('opentopomap'));
-  await page.uncheck('#ov-nodes');
-  await page.uncheck('#ov-horeca');
+  // "alles in beeld" toont méér knooppunten dan enkel op route
+  await page.check('#ov-nodes-all');
+  await page.check('#ov-horeca-all');
   await sleep(300);
-  t('overlays verborgen', (await page.$$('.kp-badge')).length === 0 && (await page.$$('.horeca-pin')).length === 0);
+  t('alle knooppunten toont superset', (await page.$$('.kp-badge')).length >= onRouteNodes);
+  await page.uncheck('#ov-nodes-all');
+  await page.uncheck('#ov-horeca-all');
+  // "op route" uit → knooppunten + koffie weg
+  await page.uncheck('#ov-nodes-route');
+  await page.uncheck('#ov-horeca-route');
+  await sleep(300);
+  t('overlays op route verborgen', (await page.$$('.kp-badge')).length === 0 && (await page.$$('.horeca-pin')).length === 0);
+  t('voorkeur bewaard (nodesRoute uit)', await page.evaluate(() => App.prefs.nodesRoute === false));
   await page.click('#layers-close');
 
   // voorkeuren overleven herladen
@@ -765,7 +776,7 @@ await scenario('S9 statuslampjes', {
   await sleep(300);
   // lagen-sheet vóór het eerste resultaat: nog geen tellingen bekend
   await page.click('#btn-layers');
-  t('lagen-sheet: gebiedstelling (0 vóór routes)', (await txt(page, '#ov-nodes-count')).includes('in dit gebied'));
+  t('lagen-sheet: gebiedstelling (0 vóór routes)', (await txt(page, '#ov-nodes-count')).includes('zichtbaar'));
   await page.click('#layers-close');
   await sleep(900);
   t('bezig: internet actief', (await txt(page, '#statusbar-map')).includes('internet actief'));
@@ -1242,7 +1253,7 @@ await scenario('S12 verken-randgevallen', {
 
   // kaartlagen-sheet in verken-modus (tellingen leeg)
   await page.click('#btn-layers');
-  t('lagen-sheet in verkennen telt gebied', (await txt(page, '#ov-nodes-count')).includes('in dit gebied'));
+  t('lagen-sheet in verkennen telt gebied', (await txt(page, '#ov-nodes-count')).includes('zichtbaar'));
   await page.click('#layers-close');
 
   // verouderde zoekactie: tweede zoek annuleert de eerste (succes- én foutpad)
@@ -1626,8 +1637,12 @@ await scenario('S15 deselecteren & opslag-eerst', {
   await page.waitForFunction(() => /[1-9][0-9]* routes? gedownload/.test(document.getElementById('explore-count').textContent), null, { timeout: 20000 });
   t('eerste verkenning gebruikt internet', netCalls >= 1, String(netCalls));
   await sleep(300); // overlays worden vlak na de laatste route getekend
-  t('knooppunten zichtbaar tijdens verkennen', (await page.$$('.kp-badge')).length === 2);
-  t('horeca (koffie) zichtbaar tijdens verkennen', (await page.$$('.horeca-pin')).length === 1);
+  t('verkennen toont standaard GÉÉN overlays', (await page.$$('.kp-badge')).length === 0 && (await page.$$('.horeca-pin')).length === 0);
+  // aanzetten van "alles in beeld" toont ze wél
+  await page.evaluate(() => { App.setOverlay('nodesAll', true); App.setOverlay('horecaAll', true); });
+  await sleep(150);
+  t('knooppunten zichtbaar na aanzetten', (await page.$$('.kp-badge')).length === 2);
+  t('horeca (koffie) zichtbaar na aanzetten', (await page.$$('.horeca-pin')).length === 1);
   await page.waitForFunction(() => /Gebied offline/.test(document.getElementById('toast').textContent), null, { timeout: 60000 });
   const regNodes = await page.evaluate(async () =>
     (await DB.allRegions()).some((r) => r.id.startsWith('region-') && (r.nodes || []).length === 2));
@@ -1709,6 +1724,8 @@ await scenario('S17 heel België offline', {
     return r ? { n: r.nodes.length, h: r.horeca.length } : null;
   });
   t('12k knooppunten + 34k horeca opgeslagen', reg && reg.n > 12000 && reg.h > 34000, JSON.stringify(reg));
+  // verkennen toont standaard geen overlays → aanzetten om de landdata te zien
+  await page.evaluate(() => { App.setOverlay('nodesAll', true); App.setOverlay('horecaAll', true); });
   await sleep(400);
   t('knooppunten rond Lommel zichtbaar zonder Overpass', (await page.$$('.kp-badge')).length > 0);
   t('horeca rond Lommel zichtbaar zonder Overpass', (await page.$$('.horeca-pin')).length > 0);

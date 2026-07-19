@@ -95,6 +95,7 @@
     <div id="explore-bar" class="explore-bar" hidden>
       <div class="explore-head">
         <strong id="explore-count">Routes in de buurt</strong>
+        <span id="explore-spin" class="explore-spin" hidden aria-label="bezig met laden">↻</span>
         <button id="explore-search" class="chip" title="Zoek routes in dit kaartbeeld">🔄 Zoek hier</button>
       </div>
       <p id="explore-zoomhint" class="explore-zoomhint" hidden>
@@ -129,9 +130,11 @@
         <label class="opt"><input type="radio" name="basemap" value="topo" /> <span>Topografisch <small>(hoogtelijnen)</small></span></label>
       </fieldset>
       <fieldset class="opt-group">
-        <legend>Overlays</legend>
-        <label class="opt"><input type="checkbox" id="ov-nodes" /> <span>Wandelknooppunten <small class="ov-count" id="ov-nodes-count"></small></span></label>
-        <label class="opt"><input type="checkbox" id="ov-horeca" /> <span>Horeca <small class="ov-count" id="ov-horeca-count"></small></span></label>
+        <legend>Overlays <small class="ov-count" id="ov-nodes-count"></small> <small class="ov-count" id="ov-horeca-count"></small></legend>
+        <label class="opt"><input type="checkbox" id="ov-horeca-route" /> <span>☕ Koffie op route</span></label>
+        <label class="opt"><input type="checkbox" id="ov-horeca-all" /> <span>☕ Koffie (alles in beeld)</span></label>
+        <label class="opt"><input type="checkbox" id="ov-nodes-route" /> <span>Knooppunten op route</span></label>
+        <label class="opt"><input type="checkbox" id="ov-nodes-all" /> <span>Knooppunten (alles in beeld)</span></label>
       </fieldset>
       <p class="tiny" id="overlays-note"></p>
       <div class="sheet-actions">

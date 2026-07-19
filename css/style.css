@@ -109,6 +109,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
 }
 .explore-head { display: flex; align-items: center; gap: 10px; }
 .explore-head #explore-count { flex: 1; min-width: 0; font-size: 15px; color: #f8fafc; }
+.explore-spin { animation: spin 1s linear infinite; font-size: 17px; color: #38bdf8; flex: none; }
 .explore-zoomhint { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #fbbf24; margin: 0; }
 .explore-zoomhint > span { flex: 1; min-width: 0; }
 /* Routelijst in het download-paneel */

@@ -40,8 +40,12 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   en 34.000+ horecazaken van het land zitten als compact databestand (±2,7 MB) in de
   app en worden bij het eerste gebruik lokaal opgeslagen — daarna **nooit meer wachten
   of internet nodig** hiervoor, waar je ook bent in België. Knooppunten verschijnen als
-  badges (bv. **71**), horeca als ☕; per scherm worden de ~400 dichtstbijzijnde
-  getekend. Aan/uit via 🗺. (Buiten België komen ze per gebied via OpenStreetMap.)
+  badges (bv. **71**), horeca als ☕. (Buiten België komen ze per gebied via OpenStreetMap.)
+  Je regelt ze via 🗺 met **vier schakelaars**: *Koffie op route*, *Koffie (alles in beeld)*,
+  *Knooppunten op route*, *Knooppunten (alles in beeld)*. **Standaard** zie je bij een
+  geopende route enkel wat er **op de route** ligt (koffie vlak bij, knooppunten erop) —
+  de kaart staat dus niet vol. Wil je alles zien, vink dan "alles in beeld" aan. In
+  "Nieuwe wandeling" staan ze standaard **uit** (aanzetten als je ze wil).
 - **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): een **download-paneel**
   met álle bewegwijzerde wandelroutes rond je — ook in **Duitsland** (lokale lussen én
   regionale Wanderwege). Bovenaan zie je kort en overzichtelijk hoeveel routes er al
@@ -117,7 +121,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 364 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 368 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

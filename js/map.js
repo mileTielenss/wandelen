@@ -41,8 +41,14 @@
       });
       // Geen zoomknoppen: touch-first (knijpen/scrollen zoomt) houdt de kaart rustig.
 
-      this.showNodes = opts.showNodes !== false;
-      this.showHoreca = opts.showHoreca !== false;
+      // Vier onafhankelijke overlay-lagen (zie App.prefs): "op route" = enkel wat op/
+      // vlak bij de geopende route ligt; de andere = alles in het gebied.
+      this.showNodesRoute = opts.nodesRoute;
+      this.showNodesAll = opts.nodesAll;
+      this.showHorecaRoute = opts.horecaRoute;
+      this.showHorecaAll = opts.horecaAll;
+      this._areaNodes = [];
+      this._areaHoreca = [];
       this.setBasemap(opts.basemap || Tiles.DEFAULT_BASEMAP);
     },
 
@@ -128,25 +134,36 @@
       }).bindTooltip((h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t), { direction: 'top' }));
     },
 
-    _setOverlayLayers(nodes, horeca) {
+    // Beschikbare overlays voor dit beeld onthouden; welke er getoond worden hangt
+    // van de vier schakelaars af (refreshOverlays).
+    _setAreaOverlays(nodes, horeca, hasRoute) {
+      this._areaNodes = nodes || [];
+      this._areaHoreca = horeca || [];
+      this._hasRoute = !!hasRoute;
+      this.refreshOverlays();
+    },
+
+    // Teken de overlays volgens de vier schakelaars. "op route" = binnen X m van de
+    // geopende routelijn (leeg in verken-modus: daar is geen enkele route). "alle" =
+    // alles in het gebied. Zo staat een geopende route standaard enkel wat er echt op
+    // ligt, en verkennen toont niets tenzij je het aanzet.
+    refreshOverlays() {
+      const near = (list, m) => ((this._hasRoute && this._latlngs)
+        ? list.filter((p) => nearestDistanceMeters(p.lat, p.lng, this._latlngs) <= m) : []);
+      const nodes = this.showNodesAll ? this._areaNodes : (this.showNodesRoute ? near(this._areaNodes, 35) : []);
+      const horeca = this.showHorecaAll ? this._areaHoreca : (this.showHorecaRoute ? near(this._areaHoreca, 150) : []);
       if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
       if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
-      this.nodeLayer = L.layerGroup(this._nodeMarkers(nodes));
-      this.horecaLayer = L.layerGroup(this._horecaMarkers(horeca));
+      this.nodeLayer = L.layerGroup(this._nodeMarkers(nodes)).addTo(this.map);
+      this.horecaLayer = L.layerGroup(this._horecaMarkers(horeca)).addTo(this.map);
       this._nodeCount = nodes.length;
       this._horecaCount = horeca.length;
-      this.applyOverlayVisibility();
     },
 
     renderOverlays() {
       const r = this.route;
       if (!r) return;
-      // Bij een geopende route: enkel wat er echt bij hoort — knooppunten binnen
-      // ~200 m van de route, horeca binnen ~450 m (een kleine omweg waard).
-      this._setOverlayLayers(
-        (r.nodes || []).filter((n) => nearestDistanceMeters(n.lat, n.lng, this._latlngs) <= 200),
-        (r.horeca || []).filter((h) => nearestDistanceMeters(h.lat, h.lng, this._latlngs) <= 450)
-      );
+      this._setAreaOverlays(r.nodes || [], r.horeca || [], true);
       this._setWaypoints(r.waypoints || []);
     },
 
@@ -174,25 +191,18 @@
       if (best && bestD <= 34) best.openPopup();
     },
 
-    // In verken-modus: álle knooppunten + horeca van het gebied (geen filter),
-    // zodat je op de bordjes-nummers kan zoeken.
+    // In verken-modus: de knooppunten/horeca van het gebied als beschikbare set
+    // (getoond enkel als "alle koffie"/"alle knooppunten" aanstaan — standaard niet).
     renderExploreOverlays(nodes, horeca) {
-      this._setOverlayLayers(nodes, horeca);
-    },
-
-    applyOverlayVisibility() {
-      if (this.nodeLayer) {
-        if (this.showNodes) this.nodeLayer.addTo(this.map); else this.nodeLayer.remove();
-      }
-      if (this.horecaLayer) {
-        if (this.showHoreca) this.horecaLayer.addTo(this.map); else this.horecaLayer.remove();
-      }
+      this._setAreaOverlays(nodes, horeca, false);
     },
 
     setOverlayVisible(kind, on) {
-      if (kind === 'nodes') this.showNodes = on;
-      if (kind === 'horeca') this.showHoreca = on;
-      this.applyOverlayVisibility();
+      if (kind === 'nodesRoute') this.showNodesRoute = on;
+      if (kind === 'nodesAll') this.showNodesAll = on;
+      if (kind === 'horecaRoute') this.showHorecaRoute = on;
+      if (kind === 'horecaAll') this.showHorecaAll = on;
+      this.refreshOverlays();
     },
 
     recenter() {

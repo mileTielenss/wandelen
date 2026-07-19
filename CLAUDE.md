@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (364 asserts) + coverage-rapport
+npm install && npm test         # testsuite (368 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -101,7 +101,16 @@ offline opgeslagen verkende gebieden (30 dagen vers). Verkennen is **opslag-eers
 `_exploreFetch()` zonder `force` gebruikt verse `region-*`-routes zonder netwerk;
 “Zoek hier” roept `_exploreFetch(true)` aan en gaat wél naar Overpass.
 
-Overig: `localStorage['wandelen-prefs']` = `{ basemap, showNodes, showHoreca }`.
+**Overlays (4 schakelaars).** Prefs `{ basemap, nodesRoute, nodesAll, horecaRoute, horecaAll }`
+(`localStorage['wandelen-prefs']`). Per soort twee onafhankelijke lagen: **"op route"** =
+enkel wat op/vlak bij de geopende routelijn ligt (knooppunten ≤35 m, koffie ≤150 m —
+`MapView.refreshOverlays`), **"alles in beeld"** = alle knooppunten/horeca van het gebied.
+Standaard staan de **op-route**-lagen aan en de **alles**-lagen uit, zodat een geopende route
+enkel toont wat er écht op ligt en verkennen niets toont tenzij je "alles" aanzet. In
+verken-modus is er geen enkele route → "op route" toont niets; enkel "alles" telt daar.
+`MapView.setOverlayVisible(kind,on)` (kind = `nodesRoute|nodesAll|horecaRoute|horecaAll`)
+hertekent; de layers-sheet heeft 4 checkboxes. Het verken-paneel heeft een achtergrond-
+spinner (`#explore-spin`) terwijl er geladen wordt — de app blijft intussen bruikbaar.
 Cache Storage: `wandelen-app-v4` (shell), `wandelen-tiles-v1` (alle kaartlagen door elkaar,
 sleutel = volledige tegel-URL).
 
