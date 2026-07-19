@@ -926,6 +926,69 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     await new Promise((r) => setTimeout(r, 60));
     ok('geo: lege boodschap → fout', lastToast().includes('fout'));
 
+    // Grove eerste fix (>60 m) → kort verfijnen naar de nauwkeurigste GPS-fix,
+    // zodat de stip op de júiste plek staat i.p.v. op de netwerk-fix ernaast.
+    MapView.map.setView([51.0, 5.0], 15, { animate: false });
+    setGeo({ // (zonder _locateWaitMs → standaard wachttijd; de fijne fix komt eerder)
+      getCurrentPosition: (okCb) => okCb({ coords: { latitude: 51.0, longitude: 5.0, accuracy: 300 } }), // grof
+      watchPosition: (okCb) => {
+        setTimeout(() => okCb({ coords: { latitude: 51.05, longitude: 5.05, accuracy: 8 } }), 20);  // fijn → klaar
+        setTimeout(() => okCb({ coords: { latitude: 51.06, longitude: 5.06, accuracy: 5 } }), 45);  // 2e fix ná klaar → genegeerd
+        return 1;
+      },
+      clearWatch: () => {},
+    });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 90));
+    ok('locatie: grove fix wordt verfijnd (stip juist)',
+      Math.abs(MapView.locMarker.getLatLng().lat - 51.05) < 1e-4, MapView.locMarker.getLatLng().lat);
+    ok('locatie: toont de nauwkeurigheid (±m)', lastToast().includes('±8 m'), lastToast());
+    MapView.clearLocation();
+
+    // Decente eerste fix (≤60 m, hier onbekende accuracy) → meteen gebruiken.
+    setGeo({ getCurrentPosition: (okCb) => okCb({ coords: { latitude: 51.1, longitude: 5.1, accuracy: 0 } }) });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 30));
+    ok('locatie: decente/onbekende fix → meteen gebruikt (geen cirkel/toast)',
+      Math.abs(MapView.locMarker.getLatLng().lat - 51.1) < 1e-4 && !MapView.accCircle);
+    MapView.clearLocation();
+
+    // Verfijning levert enkel slechtere fixes → na korte time-out de eerste gebruiken.
+    MapView._locateWaitMs = 60;
+    setGeo({
+      getCurrentPosition: (okCb) => okCb({ coords: { latitude: 52.0, longitude: 6.0, accuracy: 200 } }),
+      watchPosition: (okCb) => { setTimeout(() => okCb({ coords: { latitude: 52.1, longitude: 6.1, accuracy: 500 } }), 15); return 1; }, // slechter
+      clearWatch: () => {},
+    });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 120));
+    ok('locatie: slechtere verfijning genegeerd → eerste fix', Math.abs(MapView.locMarker.getLatLng().lat - 52.0) < 1e-4);
+    MapView.clearLocation();
+
+    // Fout tijdens verfijnen → val netjes terug op de eerste (grove) fix.
+    setGeo({
+      getCurrentPosition: (okCb) => okCb({ coords: { latitude: 53.0, longitude: 7.0, accuracy: 250 } }),
+      watchPosition: (okCb, err) => { setTimeout(() => err({ code: 2 }), 15); return 1; },
+      clearWatch: () => {},
+    });
+    MapView.locateOnce();
+    await new Promise((r) => setTimeout(r, 60));
+    ok('locatie: fout bij verfijnen → eerste fix gebruikt', !!MapView.locMarker && Math.abs(MapView.locMarker.getLatLng().lat - 53.0) < 1e-4);
+    MapView.clearLocation();
+    MapView._locateWaitMs = 0;
+
+    // z-fallback: getZoom() → 0 (|| 0) in beide modi (route én verkennen)
+    const origGetZoom = MapView.map.getZoom.bind(MapView.map);
+    MapView.map.getZoom = () => 0;
+    MapView.exploreMode = false;
+    MapView._onLocated({ coords: { latitude: 51.2, longitude: 5.2, accuracy: 0 } }, null);
+    MapView.exploreMode = true; MapView.exploreRoutes = [];
+    MapView._onLocated({ coords: { latitude: 51.2, longitude: 5.2, accuracy: 0 } }, null);
+    const zoomFallbackOk = !!MapView.locMarker;
+    MapView.map.getZoom = origGetZoom;
+    MapView.exploreMode = false; MapView.clearLocation();
+    ok('locatie: zoom-fallback (|| 0) in route- én verken-modus', zoomFallbackOk);
+
     // Tracking: niet-fatale fout, dragstart en staleness
     let watchErr = null;
     setGeo({

@@ -357,31 +357,64 @@
       if (!('geolocation' in navigator)) { App.toast('Geen GPS beschikbaar'); this._setGps('denied'); if (onErr) onErr(); return; }
       App.toast('Locatie bepalen…');
       this._setGps('searching');
+      const highAcc = !opts.fast;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          this._setMode('located');
-          this._updateLocation(pos, false);
-          const ll = [pos.coords.latitude, pos.coords.longitude];
-          const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
-          // Zonder animatie: de zoekactie die hierna volgt leest meteen de
-          // kaartgrenzen — tijdens een animatie zijn die nog de oude, waardoor
-          // er naast je locatie gezocht werd.
-          this.map.setView(ll, z, { animate: false });
-          // Eenmalige meting klaar → GPS-hardware staat weer uit, dus lampje uit.
-          this._setGps('off');
-          if (onFix) onFix(pos);
+          // De eerste meting is soms een grove netwerk-/wifi-fix (dan staat je stip
+          // ernaast). Bij hoge precisie en een grove eerste fix nog even kort
+          // verfijnen naar een echte GPS-fix; een decente fix gebruiken we meteen.
+          if (highAcc && pos.coords.accuracy > 60) this._refineFix(pos, onFix);
+          else this._onLocated(pos, onFix);
         },
-        (err) => {
-          this._setGps(err && err.code === 1 ? 'denied' : 'off');
-          App.toast('Locatie mislukt: ' + friendlyGeoError(err));
-          if (onErr) onErr(err);
-        },
-        // Normaal: verse, nauwkeurige meting bij elke tik. Verken-modus (fast):
-        // een recente/grove fix volstaat om routes in de buurt te vinden — veel sneller.
+        (err) => this._onLocateErr(err, onErr),
+        // Verken-modus (fast): een recente/grove fix volstaat om routes in de buurt
+        // te vinden — veel sneller. Normaal: verse, nauwkeurige meting.
         opts.fast
           ? { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
           : { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
+    },
+
+    // Grove eerste fix → kort blijven meten en de nauwkeurigste nemen (of na een
+    // korte tijd de beste tot dan). Zo springt de stip naar de júiste plek.
+    _refineFix(first, onFix) {
+      let best = first, id = null, done = false, timer = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (id != null) navigator.geolocation.clearWatch(id);
+        clearTimeout(timer);
+        this._onLocated(best, onFix);
+      };
+      timer = setTimeout(finish, this._locateWaitMs || 6000);
+      id = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (pos.coords.accuracy < best.coords.accuracy) best = pos;
+          if (pos.coords.accuracy <= 60) finish();
+        },
+        () => finish(), // fout tijdens verfijnen → gewoon de eerste fix gebruiken
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    },
+
+    _onLocated(pos, onFix) {
+      this._setMode('located');
+      this._updateLocation(pos, false);
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      const z = this.exploreMode ? Math.max(this.map.getZoom() || 0, 14) : Math.max(this.map.getZoom() || 0, 15);
+      // Zonder animatie: een zoekactie die hierna volgt leest meteen de kaartgrenzen —
+      // tijdens een animatie zijn die nog de oude, waardoor er naast je locatie gezocht werd.
+      this.map.setView(ll, z, { animate: false });
+      this._setGps('off'); // eenmalige meting klaar → GPS-hardware weer uit, lampje uit
+      // Eerlijk over de precisie: bij een grove fix weet je meteen waarom de stip afwijkt.
+      if (!this.exploreMode && pos.coords.accuracy) App.toast(`Locatie bepaald (±${Math.round(pos.coords.accuracy)} m)`);
+      if (onFix) onFix(pos);
+    },
+
+    _onLocateErr(err, onErr) {
+      this._setGps(err && err.code === 1 ? 'denied' : 'off');
+      App.toast('Locatie mislukt: ' + friendlyGeoError(err));
+      if (onErr) onErr(err);
     },
 
     // ---------- Locatie volgen (tracking) ----------

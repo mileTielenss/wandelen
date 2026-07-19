@@ -26,7 +26,9 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Kaart** met de volledige route om te valideren dat je nog op het juiste pad zit.
 - **Locatie in drie standen** — bewust gescheiden om batterij te sparen:
   1. **Kaart** (standaard): enkel de route, **GPS uit**.
-  2. **◎ Toon mijn locatie**: één verse GPS-meting, zet een stip op de kaart. GPS gaat daarna weer uit.
+  2. **◎ Toon mijn locatie**: zet een stip op de kaart. Is de eerste meting nog grof
+     (netwerk-fix), dan wacht de app heel even op een échte GPS-fix zodat de stip juist
+     staat, en toont de nauwkeurigheid (bv. *±12 m*). GPS gaat daarna weer uit.
   3. **➤ Volg mijn locatie** (tracking): aparte, expliciete stand met live positie. Stopt zodra je op **Stop** tikt.
 - **Hoe ver nog?** Zodra je locatie bekend is, toont de balk bovenaan je **voortgang
   langs de route**: bv. *km 8,4 van 18,8 · nog 10,4 km · 45%*. Ben je van het pad af,
@@ -113,7 +115,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 339 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 345 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

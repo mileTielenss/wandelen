@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (339 asserts) + coverage-rapport
+npm install && npm test         # testsuite (345 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -192,6 +192,11 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
   loopt) — anders schuift de kaart constant en beweegt je doelwit weg; (2) de
   nauwkeurigheidscirkel is `interactive:false`, anders vangt hij tikken af over zijn
   hele oppervlak en kan je de bordjes/knooppunten eronder niet aantikken.
+- **Locatie-fix precisie**: `locateOnce` neemt eerst een `getCurrentPosition`, maar de
+  eerste meting is vaak een grove netwerk-fix (stip ernaast). Bij hoge precisie én een
+  eerste fix >60 m verfijnt `_refineFix` kort via `watchPosition` naar de nauwkeurigste
+  GPS-fix (of na `_locateWaitMs`, default 6 s, de beste tot dan). Een decente eerste fix
+  gebruiken we meteen (geen vertraging). Tests zetten `MapView._locateWaitMs` laag.
 - De **service worker cachet 200-antwoorden** van eigen bestanden (SWR): een test
   die per aanroep ander gedrag wil, moet met het niet-gecachete geval (bv. 404)
   beginnen.
