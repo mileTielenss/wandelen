@@ -57,7 +57,7 @@
       throw new Error('Dit is geen geldige KML');
     }
     let coords = [];
-    const nodes = [];
+    const waypoints = [];
     for (const pm of doc.getElementsByTagName('Placemark')) {
       const line = pm.getElementsByTagName('LineString')[0];
       const point = pm.getElementsByTagName('Point')[0];
@@ -67,14 +67,14 @@
         const ll = coordList(point)[0];
         if (ll) {
           const nm = tagText(pm, 'name');
-          nodes.push({ ref: refFromName(nm, nodes.length + 1), name: nm, lat: ll[0], lng: ll[1] });
+          waypoints.push({ ref: refFromName(nm, waypoints.length + 1), name: nm, lat: ll[0], lng: ll[1] });
         }
       }
     }
     // Geen getekende lijn? Verbind dan de punten in volgorde (zoals losse GPX-punten).
     let vorm = 'track';
     if (coords.length < 2) {
-      coords = nodes.map((n) => [n.lat, n.lng, 0]);
+      coords = waypoints.map((n) => [n.lat, n.lng, 0]);
       vorm = 'punten';
     }
     if (coords.length < 2) throw new Error('Geen bruikbare route in deze KML');
@@ -98,10 +98,12 @@
       elevationDown: Math.round(down),
       duration: 0,
       coords,
-      nodes,             // genummerde punten (bv. de bordjes) als badges op de kaart
-      // Brengt de KML eigen punten mee, dan zijn dát de markers: niet overschrijven
-      // met OSM-knooppunten (maybeFetchOverlays slaat over als dit gezet is).
-      overlaysFetched: nodes.length > 0,
+      // Genummerde route-eigen punten (bv. de bordjes): altijd zichtbaar op de kaart,
+      // los van de knooppunten-schakelaar (zie MapView._setWaypoints).
+      waypoints,
+      // Brengt de KML eigen punten mee, dan halen we géén OSM-knooppunten op die de
+      // kaart zouden vervuilen (maybeFetchOverlays slaat over als dit gezet is).
+      overlaysFetched: waypoints.length > 0,
       gpxVorm: vorm,     // 'punten' = verbonden losse locaties, geen gevolgd pad
       importedAt: new Date().toISOString(),
     };

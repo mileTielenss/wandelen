@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (329 asserts) + coverage-rapport
+npm install && npm test         # testsuite (332 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -58,7 +58,8 @@ Route (IndexedDB store `routes`, keyPath `id`):
   source: 'komoot' | 'osm' | 'gpx' | 'kml',   // gpx/kml: id = '<bron>-'+hash(coords); gpxVorm 'track'|'route'|'punten'
   name, sport, distance /*m*/, elevationUp, elevationDown, duration,
   coords: [[lat, lng, alt], …],            // volledige polyline
-  nodes:  [{ ref, lat, lng }, …],          // wandelknooppunten (Overpass)
+  nodes:  [{ ref, lat, lng }, …],          // wandelknooppunten (Overpass), via 🗺-schakelaar
+  waypoints: [{ ref, name, lat, lng }, …], // route-EIGEN punten (KML/bordjes): ALTIJD zichtbaar
   horeca: [{ n /*naam*/, t /*type*/, lat, lng }, …],
   overlaysFetched: bool,                   // nodes/horeca al opgehaald?
   tilesCached: bool, tileDetail, tileMaps: ['voyager', …],  // per kaartlaag gecachet
@@ -103,7 +104,7 @@ sleutel = volledige tegel-URL).
 |---|---|---|
 | `api.komoot.de/v007/tours/<id>?…` | route-import | CORS open; `share_token` verplicht voor privétours; fallback via corsproxy.io / allorigins |
 | GPX-URL of -bestand (`GPX.importFromUrl` / `GPX.parse`) | route-import | Veel sites (natuurpunt, nuttelozeborden.be) sturen geen CORS-headers → zelfde proxy-fallback als Komoot. `wpt`-only bestanden = losse punten, verbonden in bestandsvolgorde (`gpxVorm:'punten'`) |
-| KML-URL of Google My Maps-link (`KML.importFromUrl` / `KML.parse`) | route-import | Google My Maps-viewerlink → publieke KML-export (`/maps/d/kml?mid=…&forcekml=1`); zelfde proxy-fallback (Google stuurt geen CORS). `LineString` → route, `Point`-placemarks → `nodes` met `ref`=bordnummer + `name`. Zet `overlaysFetched:true` als er eigen punten zijn (niet overschrijven met OSM). Zo werkt de **Nutteloze Borden**-route van Genk (69 bordjes, geen GPX) toch |
+| KML-URL of Google My Maps-link (`KML.importFromUrl` / `KML.parse`) | route-import | Google My Maps-viewerlink → publieke KML-export (`/maps/d/kml?mid=…&forcekml=1`); zelfde proxy-fallback (Google stuurt geen CORS). `LineString` → route, `Point`-placemarks → `waypoints` met `ref`=bordnummer + `name`. Waypoints zijn route-eigen en worden **altijd** getekend (`MapView._setWaypoints`, los van de knooppunten-schakelaar — het zijn géén knooppunten). Zet `overlaysFetched:true` als er eigen punten zijn (geen OSM-overlays ophalen). Zo werkt de **Nutteloze Borden**-route van Genk (69 bordjes, geen GPX) toch |
 | Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
 traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
 `distance`-tag). **Progressief**: eerst een lichte lijst-query (`out tags`), dan de geometrie per brokje (`rel(id:…);out geom`) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20–25 s, client-timeout 12–16 s. Extern `signal` breekt alle pogingen af. Zoekgebied altijd klemmen (±0.16°) |

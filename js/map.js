@@ -21,6 +21,7 @@
     basemapKey: null,
     nodeLayer: null,
     horecaLayer: null,
+    waypointLayer: null,
     showNodes: true,
     showHoreca: true,
 
@@ -139,6 +140,15 @@
         (r.nodes || []).filter((n) => nearestDistanceMeters(n.lat, n.lng, this._latlngs) <= 200),
         (r.horeca || []).filter((h) => nearestDistanceMeters(h.lat, h.lng, this._latlngs) <= 450)
       );
+      this._setWaypoints(r.waypoints || []);
+    },
+
+    // Route-eigen genummerde punten (bv. de nutteloze-borden): horen ONlosmakelijk
+    // bij de route, dus altijd zichtbaar — los van de knooppunten-schakelaar.
+    _setWaypoints(wps) {
+      if (this.waypointLayer) { this.waypointLayer.remove(); this.waypointLayer = null; }
+      if (!wps.length) return;
+      this.waypointLayer = L.layerGroup(this._nodeMarkers(wps)).addTo(this.map);
     },
 
     // In verken-modus: álle knooppunten + horeca van het gebied (geen filter),
@@ -182,6 +192,7 @@
       if (this.endMarker) { this.endMarker.remove(); this.endMarker = null; }
       if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
       if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
+      if (this.waypointLayer) { this.waypointLayer.remove(); this.waypointLayer = null; }
     },
 
     enterExplore() {

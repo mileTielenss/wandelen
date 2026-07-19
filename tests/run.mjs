@@ -852,9 +852,9 @@ await scenario('S10 branch-dekking', { noOverpass: true, noKomoot: true }, async
     ok('kml: eigen punten → overlaysFetched (niet overschrijven)', kLine.overlaysFetched === true);
     ok('kml: geen Document-naam, geen fallback → KML-route',
       K('<kml><Placemark><LineString><coordinates>5,51,0 5,51.001,0</coordinates></LineString></Placemark></kml>').name === 'KML-route');
-    ok('kml: punten → genummerde nodes (ref uit naam, anders volgorde)',
-      kLine.nodes.length === 2 && kLine.nodes[0].ref === '1' && kLine.nodes[0].name === '1. Start'
-      && kLine.nodes[1].ref === '2', JSON.stringify(kLine.nodes.map((n) => n.ref)));
+    ok('kml: punten → genummerde waypoints (ref uit naam, anders volgorde)',
+      kLine.waypoints.length === 2 && kLine.waypoints[0].ref === '1' && kLine.waypoints[0].name === '1. Start'
+      && kLine.waypoints[1].ref === '2', JSON.stringify(kLine.waypoints.map((n) => n.ref)));
     const kPts = K('<kml><Document><name>Enkel punten</name>' +
       '<Placemark><name>A</name><Point><coordinates>5.0,51.0</coordinates></Point></Placemark>' +
       '<Placemark><name>B</name><Point><coordinates>5.0,51.001</coordinates></Point></Placemark>' +
@@ -1673,15 +1673,30 @@ await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
   await page.waitForFunction(() => /Nuttelozebordenroute Genk/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('My Maps-link → route geopend', true);
   t('afstand ± 3,9 km', (await txt(page, '#map-route-meta')).includes('km'));
-  // de 69 genummerde bordjes staan als badges op de kaart, met hun naam als tooltip
+  // de 69 genummerde bordjes staan als waypoints op de kaart, met hun naam als tooltip
   await page.waitForSelector('.kp-badge', { timeout: 10000 });
   const badges = await page.$$eval('.kp-badge', (els) => els.map((e) => e.textContent));
   t('genummerde bord-badges getekend', badges.length > 20 && badges.includes('1'), `${badges.length} badges`);
+  t('bordjes zitten in waypoints, niet in knooppunten', await page.evaluate(() =>
+    (MapView.route.waypoints || []).length === 69 && (MapView.route.nodes || []).length === 0));
   const tip = await page.evaluate(() => {
-    const m = MapView.nodeLayer.getLayers()[0];
+    const m = MapView.waypointLayer.getLayers()[0];
     return m ? m.getTooltip().getContent() : '';
   });
   t('tooltip toont bordnaam i.p.v. "Wandelknooppunt"', !/Wandelknooppunt/.test(tip) && tip.length > 2, tip);
+  // REGRESSIE: bordjes horen bij de route → blijven zichtbaar ook als de
+  // knooppunten-schakelaar UIT staat (ze zijn géén knooppunten).
+  await page.evaluate(() => { App.setOverlay('nodes', false); });
+  t('bordjes blijven zichtbaar met knooppunten UIT',
+    (await page.$$('.kp-badge')).length > 20 &&
+    await page.evaluate(() => MapView.map.hasLayer(MapView.waypointLayer)));
+  await page.evaluate(() => { App.setOverlay('nodes', true); });
+  // Naar "Nieuwe wandeling" (enterExplore) ruimt de route-visual incl. waypoints op.
+  t('waypoints opgeruimd bij verlaten route', await page.evaluate(() => {
+    const had = !!MapView.waypointLayer;
+    MapView.enterExplore();
+    return had && !MapView.waypointLayer;
+  }));
   await page.click('#btn-back');
   await sleep(200);
   t('KML-route in de lijst', (await page.$$eval('.route-card .name', (els) => els.map((e) => e.textContent))).some((n) => /Genk/.test(n)));
