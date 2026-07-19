@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (345 asserts) + coverage-rapport
+npm install && npm test         # testsuite (364 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -35,7 +35,7 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 | `js/komoot.js` | `Komoot` | Komoot-URL parsen, tour ophalen, naar routeformaat |
 | `js/gpx.js` | `GPX` | GPX (URL of bestand) parsen: trk → rte → wpt, naar routeformaat |
 | `js/kml.js` | `KML` | KML / Google My Maps parsen: LineString → route, Point → genummerde punten (bv. bordjes). Bron voor routes die enkel als "digitaal routeplan" bestaan |
-| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Progressief laden: lijst (`fetchRouteList`) → geometrie per brokje (`fetchRoutesByIds`) → overlays (`fetchOverlaysArea`); hedged mirrors + extern abort-`signal` |
+| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Progressief laden: lijst (`fetchRouteList`, `out tags center` → naam+afstand+centrum) → geometrie per route (`fetchRoutesByIds`, dichtste eerst) → overlays (`fetchOverlaysArea`); hedged mirrors + extern abort-`signal` |
 | `js/tiles.js` | `Tiles` | Kaartlagen-catalogus, tegelplanning (corridor/bbox), downloads naar Cache Storage |
 | `js/map.js` | `MapView`, `Geo` | Leaflet-kaart, route/overlays tekenen, locatie (1×/tracking), verken-laag, geometrie |
 | `js/app.js` | `App` | Schermen, flows, statuslampjes, auto-caching, voorkeuren, event-bedrading |
@@ -71,14 +71,21 @@ bounds: {minLat,minLng,maxLat,maxLng}, routes: […], nodes: […], horeca: […
 Knooppunten + horeca + routes worden in verken-modus als vaste overlays getoond
 (`MapView.renderExploreOverlays`), ook offline via `_overlaysFromRegions`.
 
-**Progressief laden** (i.p.v. één trage gecombineerde aanvraag): `_exploreFetch`
-haalt routes in fasen op zodat er meteen iets zichtbaar is en de kaart bruikbaar blijft:
-1. **Fase 1 — lijst** (`Overpass.fetchRouteList` → `listQuery`, `out tags qt`):
-   piepklein, enkel route-ids + tags, zodat we direct het aantal weten.
+**Download-paneel + progressief laden** (i.p.v. één trage gecombineerde aanvraag):
+het verken-paneel (`#explore-bar`) toont een **teller** (`#explore-count`, bv. "3 van 5
+gedownload"), een **routelijst** (`#explore-list`, `_renderExploreList`) met per route een
+status (· wachten → ↻ laden → ✓ klaar), en — bij een te grote view — een **zoom-in-hint**
+(`#explore-zoomhint` + `App.exploreZoomIn`). `_exploreFetch` werkt zo:
+0. **Zoom-poort:** is de view te groot (> ±0.16°), dan géén trage query maar de zoom-in-hint
+   (kleiner gebied = snellere, betrouwbaardere Overpass-call).
+1. **Fase 1 — lijst** (`Overpass.fetchRouteList` → `listQuery`, `out tags center qt`):
+   ids + naam/ref/afstand/kleur (`Overpass.listItem`) + **centrum** per route. Meteen de
+   volledige lijst tonen; gesorteerd op **afstand tot het midden van de view** (dichtste eerst).
 2. **Fase 2 — geometrie** (`Overpass.fetchRoutesByIds` → `geomQuery`, `rel(id:…);out geom qt`):
-   de ids in brokjes van 6, met een concurrency-pool van 3 (`_runPool`); élk brokje
-   verschijnt meteen op de kaart via `MapView.addExploreRoutes` (niet-destructief —
-   een reeds gekozen route en tikken blijven behouden).
+   **1 route per aanvraag**, dichtste eerst, met een concurrency-pool van 3 (`_runPool`); elke
+   route verschijnt meteen op de kaart (`MapView.addExploreRoutes`) én de lijst-status wordt
+   `klaar`. Een tik op een nog-niet-geladen lijst-item (`_onExploreItemTap`) haalt díe route
+   meteen op (voorrang). Kiezen kan via de kaart óf de lijst.
 3. **Overlays** (`Overpass.fetchOverlaysArea` → `out center qt`): parallel gestart,
    blokkeert het tekenen van routes niet.
 

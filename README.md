@@ -42,19 +42,21 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   of internet nodig** hiervoor, waar je ook bent in België. Knooppunten verschijnen als
   badges (bv. **71**), horeca als ☕; per scherm worden de ~400 dichtstbijzijnde
   getekend. Aan/uit via 🗺. (Buiten België komen ze per gebied via OpenStreetMap.)
-- **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): opent een kaart met
-  álle bewegwijzerde wandelroutes rond je, elk in **de kleur van de pijltjes** en met de
-  **afstand** — ook in **Duitsland** (lokale lussen én regionale Wanderwege). Routes
-  komen altijd **volledig** binnen: raakt een traject ook maar met één hoekje je
-  scherm, dan krijg je heel de route, met de officiële afstand. Routes laden
-  **progressief** — eerst een snelle telling, daarna verschijnen ze één voor één op
-  de kaart, zodat je niet op alles hoeft te wachten en de kaart intussen bruikbaar
-  blijft (pannen, zoomen en een route kiezen kan gewoon tijdens het laden). Tik ◎ om te zien op welke routes je staat, kies er één en tik **Volg** —
-  dan wordt die route ingeladen zoals gewoonlijk en vanaf dan volledig offline.
-  Tik je op een **leeg stuk kaart**, dan wordt de keuze weer losgelaten en kan je
-  verder zoeken. Het verkende gebied (kaart + routes) wordt **automatisch** offline
-  opgeslagen; kom je er later terug, dan komen de routes **uit die opslag** — zonder
-  internet. **🔄 Zoek hier** haalt ze desgewenst opnieuw vers op.
+- **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): een **download-paneel**
+  met álle bewegwijzerde wandelroutes rond je — ook in **Duitsland** (lokale lussen én
+  regionale Wanderwege). Bovenaan zie je kort en overzichtelijk hoeveel routes er al
+  gedownload zijn (bv. *"3 van 5 gedownload"*), daaronder een **lijst** met per route de
+  kleur van de pijltjes, de naam en de **afstand**, en een statusje (wachten → laden → ✓).
+  Ben je te ver uitgezoomd, dan vraagt de app om **in te zoomen** (met een knop) zodat het
+  ophalen vlot gaat. Routes komen **dichtste-bij-eerst, één voor één** binnen en verschijnen
+  meteen op de kaart; je hoeft dus niet op alles te wachten — kies er gewoon één zodra ze
+  klaar is (via de kaart óf de lijst). Duurt eentje te lang, tik ze dan in de lijst aan om
+  ze met voorrang op te halen. Routes komen altijd **volledig** binnen (raakt een traject
+  ook maar met één hoekje je scherm, dan krijg je heel de route). Tik ◎ om te zien op welke
+  routes je staat, kies er één en tik **Volg** — dan wordt die ingeladen en vanaf dan
+  volledig offline. Tik op een **leeg stuk kaart** om de keuze weer los te laten. Het
+  verkende gebied wordt **automatisch** offline opgeslagen; kom je er later terug, dan komen
+  de routes **uit die opslag** — zonder internet. **🔄 Zoek hier** haalt ze opnieuw vers op.
 - **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
   de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
@@ -115,11 +117,11 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 345 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 364 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
-verkennen (hedged mirrors, bbox-klem, cache, offline fallback), automatische
+verkennen (download-paneel, hedged mirrors, zoom-poort, dichtste-eerst, cache, offline fallback), automatische
 offline-opslag, offline herstart via de service worker, statuslampjes, en
 foutinjectie (kapotte IndexedDB, kapotte Cache-opslag, falende service-worker-registratie,
 ontbrekende GPS-API). Externe services worden gemockt.

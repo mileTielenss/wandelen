@@ -234,17 +234,27 @@
     `rel["route"~"^(hiking|foot|walking)$"][!"network"](${bbox});`;
 
   // ---------- Progressief laden ----------
-  // Fase 1: enkel de route-ids + tags (piepklein, ~instant) zodat we meteen het
-  // aantal weten. Fase 2 (hieronder) haalt de geometrie per brokje op.
+  // Fase 1: route-ids + tags + centrum (licht: geen volledige geometrie). Zo weten
+  // we meteen hoeveel routes er zijn, kunnen we ze in een lijst tonen én sorteren op
+  // afstand tot het midden van het beeld. Fase 2 haalt de geometrie per route op.
   function listQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
-    return `[out:json][timeout:20];(${ROUTE_FILTER(bbox)});out tags qt;`;
+    return `[out:json][timeout:20];(${ROUTE_FILTER(bbox)});out tags center qt;`;
+  }
+  function listItem(e) {
+    const t = e.tags || {};
+    return {
+      id: e.id,
+      name: (t.name || t.ref || 'Wandelroute').slice(0, 60),
+      ref: t.ref || '',
+      colour: colourToHex(t.colour || t.color, t['osmc:symbol']),
+      distance: tagDistanceM(t.distance) || 0,
+      center: e.center ? { lat: e.center.lat, lng: e.center.lon } : null,
+    };
   }
   async function fetchRouteList(bounds, signal) {
     const data = await postQuery(listQuery(bounds), 12000, signal);
-    return (data.elements || [])
-      .filter((e) => e.type === 'relation')
-      .map((e) => ({ id: e.id, tags: e.tags || {} }));
+    return (data.elements || []).filter((e) => e.type === 'relation').map(listItem);
   }
 
   // Fase 2: geometrie van een handvol relaties tegelijk (op id), zodat elk
@@ -290,6 +300,6 @@
     fetchOverlays, fetchRouteList, fetchRoutesByIds, fetchOverlaysArea,
     boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, geomQuery, setHedgeMs: (ms) => { HEDGE_MS = ms; } },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, listItem, geomQuery, setHedgeMs: (ms) => { HEDGE_MS = ms; } },
   };
 })(window);

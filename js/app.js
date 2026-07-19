@@ -325,8 +325,9 @@
       MapView.enterExplore();
       this._ensureCountryOverlays();
       $('explore-bar').hidden = false;
+      $('explore-selected').hidden = true;
       $('explore-follow').disabled = true;
-      $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
+      $('explore-zoomhint').hidden = true;
 
       // Toon meteen het laatste zoekresultaat (cache) — geen wachten op netwerk.
       const cache = this._exploreCache();
@@ -335,23 +336,92 @@
         this._exploreBounds = cache.bounds;
         MapView.renderExplore(cache.routes, (rt) => this._onExplorePick(rt));
         this._renderAreaOverlays({ nodes: cache.nodes || [], horeca: cache.horeca || [] }, cache.bounds);
-        $('explore-hint').textContent = `${cache.routes.length} routes (vorige zoekactie) — locatie bepalen…`;
+        this._renderExploreList(cache.routes.map((r) => this._itemFromRoute(r)));
+        this._setExploreCount(`${cache.routes.length} route${cache.routes.length !== 1 ? 's' : ''} gedownload (vorige zoekactie)`);
       } else {
-        $('explore-hint').textContent = 'locatie bepalen…';
+        this._renderExploreList([]);
+        this._setExploreCount('0 routes gedownload');
       }
 
       // Grove/recente GPS-fix volstaat hier en is veel sneller dan een verse precisiefix.
       MapView.locateOnce(
         () => this._exploreFetch(),
         () => {
-          if (!cache) {
-            MapView.map.setView(this._lastCenter || [51.23, 5.35], 13);
-            $('explore-hint').textContent = 'geen GPS — verschuif de kaart en tik “Zoek hier”';
-          }
+          if (!cache) MapView.map.setView(this._lastCenter || [51.23, 5.35], 13);
           this._exploreFetch();
         },
         { fast: true }
       );
+    },
+
+    // ---------- Download-paneel: teller + routelijst ----------
+    _setExploreCount(text) { $('explore-count').textContent = text; },
+
+    _stateIcon(s) { return s === 'klaar' ? '✓' : s === 'laden' ? '↻' : '·'; },
+
+    // Lijst-item uit een reeds geladen route (status = klaar).
+    _itemFromRoute(r) {
+      return { rid: r.id, id: r.relId, name: r.name, ref: r.ref, colour: r._col || r.colour, distance: r.distance, status: 'klaar' };
+    },
+
+    _renderExploreList(items) {
+      this._exploreItems = items;
+      const box = $('explore-list');
+      box.hidden = !items.length;
+      box.innerHTML = '';
+      for (const it of items) {
+        const b = document.createElement('button');
+        b.className = 'explore-item';
+        b.dataset.rid = it.rid;
+        b.innerHTML =
+          `<span class="swatch" style="background:${it.colour || '#94a3b8'}"></span>` +
+          '<span class="x-name"></span>' +
+          `<span class="x-dist">${it.distance ? formatKm(it.distance) : ''}</span>` +
+          `<span class="x-state ${it.status === 'laden' ? 'laden' : ''}">${this._stateIcon(it.status)}</span>`;
+        b.querySelector('.x-name').textContent = it.name + (it.ref ? ' · ' + it.ref : '');
+        b.addEventListener('click', () => this._onExploreItemTap(it.rid));
+        box.appendChild(b);
+      }
+    },
+
+    _setExploreItemStatus(rid, status) {
+      const it = (this._exploreItems || []).find((x) => x.rid === rid);
+      if (it) it.status = status;
+      const el = $('explore-list').querySelector('[data-rid="' + rid + '"] .x-state');
+      if (el) { el.textContent = this._stateIcon(status); el.className = 'x-state' + (status === 'laden' ? ' laden' : ''); }
+    },
+
+    _highlightExploreItem(rid) {
+      for (const el of $('explore-list').querySelectorAll('.explore-item')) {
+        el.classList.toggle('is-selected', el.dataset.rid === rid);
+      }
+    },
+
+    // Tik op een route in de lijst: al geladen → kiezen; nog niet → nu ophalen (voorrang).
+    async _onExploreItemTap(rid) {
+      const loaded = this._exploreRoutes.find((r) => r.id === rid);
+      if (loaded) { this._onExplorePick(loaded); MapView.selectExplore(rid); return; }
+      const it = (this._exploreItems || []).find((x) => x.rid === rid);
+      if (!it) return;
+      this._setExploreItemStatus(rid, 'laden');
+      try {
+        const sig = this._exploreAbort ? this._exploreAbort.signal : undefined;
+        const part = await Overpass.fetchRoutesByIds([it.id], sig);
+        if (!part.length) { this._setExploreItemStatus(rid, 'wachten'); return; }
+        this._exploreRoutes.push(part[0]);
+        MapView.addExploreRoutes(part);
+        this._setExploreItemStatus(rid, 'klaar');
+        this._onExplorePick(part[0]);
+        MapView.selectExplore(rid);
+      } catch (_) { this._setExploreItemStatus(rid, 'wachten'); }
+    },
+
+    // Zoom in tot het gebied klein genoeg is voor een vlotte query, en zoek dan.
+    exploreZoomIn() {
+      const z = Math.max((MapView.map.getZoom() || 11) + 2, 13);
+      MapView.map.setView(this._lastCenter || MapView.map.getCenter(), z, { animate: false });
+      $('explore-zoomhint').hidden = true;
+      this._exploreFetch(true);
     },
 
     // Laatste verkenning uit de regio-opslag (max 7 dagen oud).
@@ -374,18 +444,21 @@
       const b = MapView.map.getBounds();
       const c = b.getCenter();
       this._lastCenter = [c.lat, c.lng];
-      // Begrens het zoekgebied: een uitgezoomde kaart zou anders een gigantische
-      // (trage) query opleveren. Max ~18 km hoog; anders 9 km rond het midden.
-      let bounds = { minLat: b.getSouth(), minLng: b.getWest(), maxLat: b.getNorth(), maxLng: b.getEast() };
-      const MAX_SPAN = 0.16;
-      if ((bounds.maxLat - bounds.minLat) > MAX_SPAN || (bounds.maxLng - bounds.minLng) > MAX_SPAN * 1.7) {
-        bounds = Overpass.boundsFromCenter(c.lat, c.lng, 9000);
-      }
+      const bounds = { minLat: b.getSouth(), minLng: b.getWest(), maxLat: b.getNorth(), maxLng: b.getEast() };
       const mySeq = (this._exploreSeq = (this._exploreSeq || 0) + 1);
       const onPick = (rt) => this._onExplorePick(rt);
-      // Vroeg zetten: de landdata-overlay (be-overlays) rendert op dit gebied
-      // zodra ze binnen is, ook als er (nog) geen routes zijn.
       this._exploreBounds = bounds;
+
+      // Te ver uitgezoomd → geen gigantische, trage query afvuren: vraag om in te
+      // zoomen (kleiner gebied = snellere, betrouwbaardere Overpass-call).
+      const MAX_SPAN = 0.16;
+      const tooBig = (bounds.maxLat - bounds.minLat) > MAX_SPAN || (bounds.maxLng - bounds.minLng) > MAX_SPAN * 1.7;
+      if (tooBig && navigator.onLine) {
+        $('explore-zoomhint').hidden = false;
+        if (!this._selectedExplore) this._setExploreCount('Zoom in om routes op te halen');
+        return;
+      }
+      $('explore-zoomhint').hidden = true;
 
       // Opslag-eerst: is dit gebied al eens (vers, <30 dagen) opgehaald, gebruik
       // dan de bewaarde routes — geen internet nodig. “Zoek hier” (force) haalt
@@ -400,8 +473,8 @@
             const shownIds = new Set(MapView.exploreRoutes.map((r) => r.id));
             const same = stored.length === shownIds.size && stored.every((r) => shownIds.has(r.id));
             if (!same) MapView.renderExplore(stored, onPick);
-            $('explore-hint').textContent =
-              `${stored.length} route${stored.length > 1 ? 's' : ''} (opgeslagen) — tik er één aan`;
+            this._renderExploreList(stored.map((r) => this._itemFromRoute(r)));
+            this._setExploreCount(`${stored.length} route${stored.length !== 1 ? 's' : ''} gedownload (opgeslagen)`);
           }
           return;
         }
@@ -421,9 +494,8 @@
         this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
         if (!this._selectedExplore) {
           MapView.renderExplore(routes, onPick);
-          $('explore-hint').textContent = routes.length
-            ? `${routes.length} route${routes.length > 1 ? 's' : ''} (offline) — tik er één aan`
-            : 'geen offline routes voor dit gebied';
+          this._renderExploreList(routes.map((r) => this._itemFromRoute(r)));
+          this._setExploreCount(`${routes.length} route${routes.length !== 1 ? 's' : ''} gedownload (offline)`);
         }
         $('explore-search').disabled = false;
         return;
@@ -435,46 +507,56 @@
       const overlaysP = Overpass.fetchOverlaysArea(bounds, ctrl.signal).catch(() => null);
 
       try {
-        // Fase 1 — piepkleine lijst-query: meteen weten hoeveel routes er zijn.
-        $('explore-hint').textContent = 'routes zoeken…';
+        // Fase 1 — lichte lijst-query (ids + centrum + tags): meteen de lijst tonen.
+        this._setExploreCount('routes zoeken…');
         const list = await Overpass.fetchRouteList(bounds, ctrl.signal);
         if (stale()) return;
         if (!list.length) {
           if (!this._selectedExplore) {
             MapView.renderExplore([], onPick);
-            $('explore-hint').textContent = 'geen bewegwijzerde lussen hier gevonden';
+            this._renderExploreList([]);
+            this._setExploreCount('0 routes — geen bewegwijzerde routes hier');
           }
           $('explore-search').disabled = false;
           return;
         }
 
-        // Fase 2 — geometrie in kleine, parallelle brokjes; elk brokje verschijnt
-        // meteen op de kaart (progressief laden i.p.v. wachten op alles).
-        if (!this._selectedExplore) MapView.startExploreRender(onPick);
-        const ids = list.map((l) => l.id);
-        const chunks = [];
-        for (let i = 0; i < ids.length; i += 6) chunks.push(ids.slice(i, i + 6));
+        // Dichtste bij het midden van het beeld eerst.
+        const d2 = (it) => (it.center ? (it.center.lat - c.lat) ** 2 + (it.center.lng - c.lng) ** 2 : Infinity);
+        list.sort((a, z) => d2(a) - d2(z));
+        const items = list.map((l) => ({
+          rid: 'osm-' + l.id, id: l.id, name: l.name, ref: l.ref, colour: l.colour, distance: l.distance, status: 'wachten',
+        }));
+        if (!this._selectedExplore) {
+          MapView.startExploreRender(onPick);
+          this._renderExploreList(items);
+          this._setExploreCount(`${items.length} route${items.length !== 1 ? 's' : ''} gevonden — ophalen…`);
+        }
+
+        // Fase 2 — geometrie per route, dichtste eerst, 1 voor 1 (pool van 3); elke
+        // route verschijnt meteen op de kaart én in de lijst (status → klaar).
         const all = [];
-        $('explore-hint').textContent = `0 van ${list.length} routes laden…`;
-        await this._runPool(chunks, 3, async (chunk) => {
-          let part;
-          try { part = await Overpass.fetchRoutesByIds(chunk, ctrl.signal); }
-          catch (_) { return; } // één brokje mislukt → de rest komt gewoon door
+        await this._runPool(items, 3, async (it) => {
           if (stale()) return;
-          all.push(...part);
-          if (!this._selectedExplore) MapView.addExploreRoutes(part);
-          $('explore-hint').textContent = this._selectedExplore
-            ? $('explore-hint').textContent
-            : `${all.length} van ${list.length} routes — tik er één aan`;
+          this._setExploreItemStatus(it.rid, 'laden');
+          let part;
+          try { part = await Overpass.fetchRoutesByIds([it.id], ctrl.signal); }
+          catch (_) { this._setExploreItemStatus(it.rid, 'wachten'); return; }
+          if (stale()) return;
+          if (!part.length) { this._setExploreItemStatus(it.rid, 'wachten'); return; }
+          all.push(part[0]);
+          this._setExploreItemStatus(it.rid, 'klaar');
+          if (!this._selectedExplore) {
+            MapView.addExploreRoutes(part);
+            this._setExploreCount(`${all.length} van ${items.length} gedownload`);
+          }
         });
         if (stale()) return;
         if (!all.length) throw new Error('geen geometrie');
 
         this._exploreRoutes = all;
         this._exploreBounds = bounds;
-        if (!this._selectedExplore) {
-          $('explore-hint').textContent = `${all.length} route${all.length > 1 ? 's' : ''} — tik er één aan`;
-        }
+        if (!this._selectedExplore) this._setExploreCount(`${all.length} route${all.length !== 1 ? 's' : ''} gedownload`);
 
         // Overlays vers (buiten België de enige bron) + alles offline bewaren.
         const ov = (await overlaysP) || this._overlaysFromRegions(bounds);
@@ -494,10 +576,11 @@
           this._exploreRoutes = fallback;
           this._exploreBounds = bounds;
           MapView.renderExplore(fallback, onPick);
+          this._renderExploreList(fallback.map((r) => this._itemFromRoute(r)));
           this._renderAreaOverlays(this._overlaysFromRegions(bounds), bounds);
-          $('explore-hint').textContent = `${fallback.length} routes (offline cache) — tik er één aan`;
+          this._setExploreCount(`${fallback.length} route${fallback.length !== 1 ? 's' : ''} gedownload (offline cache)`);
         } else if (!this._selectedExplore) {
-          $('explore-hint').textContent = 'kon routes niet laden — probeer “Zoek hier”';
+          this._setExploreCount('kon routes niet laden — probeer “Zoek hier”');
         }
       } finally {
         if (mySeq === this._exploreSeq) $('explore-search').disabled = false;
@@ -514,11 +597,12 @@
     _onExplorePick(rt) {
       this._selectedExplore = rt;
       $('btn-recenter').hidden = false;
-      const strong = $('explore-info').querySelector('strong');
-      strong.innerHTML = `<span class="swatch" style="background:${rt._col}"></span>` +
-        escapeHtmlApp(rt.name);
-      $('explore-hint').textContent = `${formatKm(rt.distance)}${rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : ''} — tik “Volg”`;
+      $('explore-selected').hidden = false;
+      $('explore-selname').innerHTML = `<span class="swatch" style="background:${rt._col}"></span>` +
+        escapeHtmlApp(rt.name) + (rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : '') +
+        (rt.distance ? ' · ' + formatKm(rt.distance) : '');
       $('explore-follow').disabled = false;
+      this._highlightExploreItem(rt.id);
     },
 
     // Tik op lege kaart tijdens verkennen: keuze wissen, verder kunnen zoeken.
@@ -526,10 +610,9 @@
       if (!this._exploreActive) return;
       this._selectedExplore = null;
       $('btn-recenter').hidden = true;
-      $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
-      const n = MapView.exploreRoutes.length;
-      $('explore-hint').textContent = `${n} route${n > 1 ? 's' : ''} — tik er één aan`;
+      $('explore-selected').hidden = true;
       $('explore-follow').disabled = true;
+      this._highlightExploreItem(null);
     },
 
     onExploreLocate(routesOn) {
@@ -875,9 +958,10 @@
         this._selectedExplore = null;
         $('explore-follow').disabled = true;
         $('btn-recenter').hidden = true;
-        $('explore-info').querySelector('strong').innerHTML = 'Routes in de buurt';
+        $('explore-selected').hidden = true;
         this._exploreFetch(true);
       });
+      $('explore-zoomin').addEventListener('click', () => this.exploreZoomIn());
       $('explore-follow').addEventListener('click', () => this.followSelected());
 
       $('menu-save').addEventListener('click', () => this.saveMenu());

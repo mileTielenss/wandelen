@@ -93,13 +93,18 @@
     </div>
 
     <div id="explore-bar" class="explore-bar" hidden>
-      <div id="explore-info" class="explore-info">
-        <strong>Routes in de buurt</strong>
-        <span id="explore-hint">laden…</span>
-      </div>
-      <div class="explore-actions">
+      <div class="explore-head">
+        <strong id="explore-count">Routes in de buurt</strong>
         <button id="explore-search" class="chip" title="Zoek routes in dit kaartbeeld">🔄 Zoek hier</button>
-        <button id="explore-follow" class="primary" disabled>Volg deze route</button>
+      </div>
+      <p id="explore-zoomhint" class="explore-zoomhint" hidden>
+        <span>Te ver uitgezoomd voor vlot ophalen.</span>
+        <button id="explore-zoomin" class="chip">🔍 Zoom in</button>
+      </p>
+      <div id="explore-list" class="explore-list" hidden></div>
+      <div id="explore-selected" class="explore-selected" hidden>
+        <span id="explore-selname">—</span>
+        <button id="explore-follow" class="primary" disabled>Volg</button>
       </div>
     </div>
 

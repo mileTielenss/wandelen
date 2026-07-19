@@ -107,13 +107,29 @@ button[disabled] { opacity: .55; pointer-events: none; }
   padding: 12px 14px; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,.45);
   display: flex; flex-direction: column; gap: 10px;
 }
-.explore-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.explore-info strong { font-size: 15px; color: #f8fafc; display: flex; align-items: center; gap: 8px; }
-.explore-info strong .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.5); flex: none; }
-.explore-info #explore-hint { color: #94a3b8; font-size: 13px; }
-.explore-actions { display: flex; gap: 8px; align-items: center; }
-.explore-actions .primary { flex: 1; }
-.explore-actions .primary:disabled { opacity: .5; }
+.explore-head { display: flex; align-items: center; gap: 10px; }
+.explore-head #explore-count { flex: 1; min-width: 0; font-size: 15px; color: #f8fafc; }
+.explore-zoomhint { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #fbbf24; margin: 0; }
+.explore-zoomhint > span { flex: 1; min-width: 0; }
+/* Routelijst in het download-paneel */
+.explore-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.explore-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: rgba(30,41,59,.7); border: 1px solid var(--line); border-radius: 11px;
+  padding: 8px 10px; color: #e2e8f0; font-size: 14px; cursor: pointer;
+}
+.explore-item.is-selected { border-color: #38bdf8; background: rgba(56,189,248,.14); }
+.explore-item .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,.5); flex: none; }
+.explore-item .x-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explore-item .x-dist { color: #94a3b8; font-size: 12.5px; flex: none; font-variant-numeric: tabular-nums; }
+.explore-item .x-state { flex: none; font-size: 15px; width: 18px; text-align: center; }
+.explore-item .x-state.laden { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.explore-selected { display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+.explore-selected #explore-selname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.explore-selected #explore-selname .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.5); flex: none; }
+.explore-selected .primary { flex: none; }
+.explore-selected .primary:disabled { opacity: .5; }
 
 .route-card {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
