@@ -93,6 +93,7 @@ function addCoverage(entries) {
 let browser;
 async function scenario(name, opts, fn) {
   console.log(`\n▶ ${name}`);
+  const _t0 = Date.now();
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...(opts.ctx || {}) });
   // Let op: op HOST matchen, anders onderschept /overpass/ ook onze eigen js/overpass.js.
   await context.route((u) => /cartocdn\.com|arcgisonline\.com|opentopomap\.org/.test(u.host), (r) =>
@@ -132,11 +133,16 @@ async function scenario(name, opts, fn) {
   if (opts.allowErrors) t(`${name} — fouten verwacht en afgehandeld`, true);
   else t(`${name} — geen JS-fouten`, errs.length === 0, errs.join(' | ').slice(0, 180));
   await context.close();
+  console.log(`  ⏱  ${name}: ${((Date.now() - _t0) / 1000).toFixed(1)}s`);
 }
 
 async function open(page) {
   await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
   await page.waitForSelector('.route-card', { timeout: 10000 });
+  // Hedged-mirror stagger sterk verlagen: de foutpaden hoeven in de test niet
+  // telkens 3,5–7 s op de echte staggers te wachten. De hedge-LOGICA blijft
+  // getest (mirror 2 start ná mirror 1), enkel véél sneller.
+  await page.evaluate(() => Overpass._test.setHedgeMs(120));
 }
 
 // Markeer de default route als al-gecachet zodat de auto-tegeldownload niet stoort.
@@ -700,7 +706,7 @@ await scenario('S9 statuslampjes', {
   noOverpass: true,
 }, async (page, context) => {
   await context.route(isOverpassHost, async (r) => {
-    await sleep(2000);
+    await sleep(1400);
     r.fulfill({ status: 200, contentType: 'application/json', body: LWN });
   });
   await open(page);
@@ -1171,7 +1177,7 @@ await scenario('S12 verken-randgevallen', {
       savedAt: new Date().toISOString() });
     App._regions = await DB.allRegions();
   });
-  await context.route(isOverpassHost, async (r) => { await sleep(1500); r.abort(); });
+  await context.route(isOverpassHost, async (r) => { await sleep(800); r.abort(); });
   await page.click('#btn-explore');
   await sleep(400); // cache is meteen zichtbaar, netwerk hangt nog
   await page.evaluate(() => { MapView.selectExplore('osm-42'); });
@@ -1532,7 +1538,7 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
 
   // via bestand (volledig offline pad)
   await page.setInputFiles('#gpx-file', path.join(ROOT, 'tests/fixtures/test-route.gpx'));
-  await page.waitForFunction(() => /Testlus Lommel/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Testlus Lommel/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('GPX-bestand → route geopend', true);
   t('afstand berekend', (await txt(page, '#map-route-meta')).includes('km'));
   await page.click('#btn-back');
@@ -1547,7 +1553,7 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
     await DB.put(g);
   });
   await page.setInputFiles('#gpx-file', path.join(ROOT, 'tests/fixtures/test-route.gpx'));
-  await page.waitForFunction(() => /Mijn bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Mijn bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('her-import behoudt eigen naam', true);
   await page.click('#btn-back');
 
@@ -1556,7 +1562,7 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
     r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: gpxAt(50.10, 'URL-lus') }));
   await page.fill('#url-input', 'https://voorbeeld.be/tochten/mooie-lus.gpx');
   await page.click('#btn-load');
-  await page.waitForFunction(() => /URL-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /URL-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('GPX-URL → route geopend', true);
   await page.click('#btn-back');
 
@@ -1566,7 +1572,7 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
     r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: gpxAt(50.20, 'Proxy-lus') }));
   await page.fill('#url-input', 'https://geblokkeerd.be/w.gpx');
   await page.click('#btn-load');
-  await page.waitForFunction(() => /Proxy-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Proxy-lus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('CORS-geblokkeerde GPX via proxy-fallback', true);
   await page.click('#btn-back');
 
@@ -1576,7 +1582,7 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
     r.fulfill({ status: 200, contentType: 'application/gpx+xml', body: WPT }));
   await page.fill('#url-input', 'https://bordjes.be/locaties.gpx');
   await page.click('#btn-load');
-  await page.waitForFunction(() => /losse punten verbonden/.test(document.getElementById('toast').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /losse punten verbonden/.test(document.getElementById('toast').textContent), null, { timeout: 25000 });
   t('waypoint-GPX: eerlijke melding + route', (await txt(page, '#map-route-name')).includes('Bordjes Perk'));
   await page.click('#btn-back');
 
@@ -1586,11 +1592,11 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
   await context.route((u) => u.host === 'stuk.be', (r) => r.abort());
   await page.fill('#url-input', 'https://stuk.be/w.gpx');
   await page.click('#btn-load');
-  await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Mislukt/.test(document.getElementById('load-status').textContent), null, { timeout: 25000 });
   t('onbereikbare GPX-URL → nette fout', true);
   const bad = path.join(ROOT, 'tests/fixtures/tour.json'); // geen XML
   await page.setInputFiles('#gpx-file', bad);
-  await page.waitForFunction(() => /geen geldig GPX/.test(document.getElementById('load-status').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /geen geldig GPX/.test(document.getElementById('load-status').textContent), null, { timeout: 25000 });
   t('kapot bestand → nette fout', true);
 
   // naam uit <metadata> als trk/rte naamloos is (we staan nog op de lijst)
@@ -1599,14 +1605,14 @@ await scenario('S18 GPX-import', { noKomoot: true }, async (page, context) => {
       body: '<gpx><metadata><name>Enkel-metadata</name></metadata><trk><trkseg><trkpt lat="50.40" lon="5.31"/><trkpt lat="50.402" lon="5.312"/></trkseg></trk></gpx>' }));
   await page.fill('#url-input', 'https://meta.be/w.gpx');
   await page.click('#btn-load');
-  await page.waitForFunction(() => /Enkel-metadata/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Enkel-metadata/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('gpx: naam uit metadata bij naamloze trk', true);
   await page.click('#btn-back');
 
   // 📂-knop opent de bestandskiezer én laadt het gekozen bestand
   page.once('filechooser', (fc) => fc.setFiles(path.join(ROOT, 'tests/fixtures/test-route.gpx')));
   await page.click('#btn-gpx');
-  await page.waitForFunction(() => /Lommel|bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Lommel|bordjeslus/.test(document.getElementById('map-route-name').textContent), null, { timeout: 25000 });
   t('📂 opent bestandskiezer en laadt', true);
 });
 

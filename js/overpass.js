@@ -13,6 +13,11 @@
 
   const HORECA = 'cafe|restaurant|bar|pub|fast_food|biergarten|ice_cream';
 
+  // Tussenstart tussen de hedged mirrors. Productie: 3,5 s (geef de eerste mirror
+  // een eerlijke voorsprong vóór we een tweede belasten). Tests verlagen dit zodat
+  // de foutpaden niet telkens seconden op deze staggers wachten.
+  let HEDGE_MS = 3500;
+
   function buildQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
     return `[out:json][timeout:20];(` +
@@ -40,7 +45,7 @@
     if (signal) signal.addEventListener('abort', () => stop.abort(), { once: true });
     const attempts = ENDPOINTS.map((ep, i) => (async () => {
       if (i > 0) {
-        await delay(i * 3500, stop.signal);
+        await delay(i * HEDGE_MS, stop.signal);
         if (stop.signal.aborted) throw new Error('cancelled');
       }
       const ctrl = new AbortController();
@@ -285,6 +290,6 @@
     fetchOverlays, fetchRouteList, fetchRoutesByIds, fetchOverlaysArea,
     boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, geomQuery },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, geomQuery, setHedgeMs: (ms) => { HEDGE_MS = ms; } },
   };
 })(window);

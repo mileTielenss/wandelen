@@ -135,6 +135,19 @@ Scenario's S1–S18: unit-tests in-page, alle UI-flows, alle foutpaden via fouti
 `tests/fixtures/area-real.json` = **bevroren écht Overpass-antwoord** (Hageven, incl.
 null-punten en alle rariteiten) waar de parsers elke run tegen draaien; ververs hem
 met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de parsers.
+
+**Snelheid (hou de run < ~90 s).** De volledige suite draait sequentieel; elk
+scenario print zijn eigen tijd (`⏱ …`) zodat een uitschieter meteen zichtbaar is.
+De grootste valkuil is de **hedged-mirror stagger** (`HEDGE_MS`, prod 3,5 s): een
+foutpad-test zou anders bij élke query seconden op die staggers wachten. `open()`
+zet daarom `Overpass._test.setHedgeMs(120)` — de hedge-**logica** blijft getest
+(mirror 2 start ná mirror 1), enkel véél sneller. Gebruik **geen vaste `sleep()`
+op iets waar je op een conditie kan wachten** (`waitForFunction`/`waitForSelector`);
+kunstmatige mock-vertragingen kort houden. Time-outs in traag-ladende scenario's (S18)
+staan bewust ruim (25 s) — die kosten niets als het snel gaat en voorkomen flakes
+onder belasting. Draai altijd **één** run tegelijk (kill eerst node-strays); twee
+parallelle runs botsen op poort 8199 → exit 1 met lege output.
+
 Coverage over `js/*.js` staat op **100,0% (byte-niveau)**; hou dat zo:
 
 - Nieuwe code → tests in hetzelfde commit. Draai `UNCOVERED=1 npm test` en dek
