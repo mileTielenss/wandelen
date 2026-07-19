@@ -154,8 +154,24 @@
     // bij de route, dus altijd zichtbaar — los van de knooppunten-schakelaar.
     _setWaypoints(wps) {
       if (this.waypointLayer) { this.waypointLayer.remove(); this.waypointLayer = null; }
+      if (!this._waypointTap) this._waypointTap = (e) => this._waypointNearestTap(e);
+      this.map.off('click', this._waypointTap);
       if (!wps.length) return;
       this.waypointLayer = L.layerGroup(this._nodeMarkers(wps)).addTo(this.map);
+      // Touch-tolerant: een tik in de buurt van een badge opent het dichtstbijzijnde
+      // punt (badges zijn klein en liggen soms tegen elkaar — exact mikken hoeft niet).
+      this.map.on('click', this._waypointTap);
+    },
+
+    _waypointNearestTap(e) {
+      if (!this.waypointLayer) return;
+      const cp = e.containerPoint;
+      let best = null, bestD = Infinity;
+      for (const m of this.waypointLayer.getLayers()) {
+        const d = cp.distanceTo(this.map.latLngToContainerPoint(m.getLatLng()));
+        if (d < bestD) { bestD = d; best = m; }
+      }
+      if (best && bestD <= 34) best.openPopup();
     },
 
     // In verken-modus: álle knooppunten + horeca van het gebied (geen filter),
@@ -200,6 +216,7 @@
       if (this.nodeLayer) { this.nodeLayer.remove(); this.nodeLayer = null; }
       if (this.horecaLayer) { this.horecaLayer.remove(); this.horecaLayer = null; }
       if (this.waypointLayer) { this.waypointLayer.remove(); this.waypointLayer = null; }
+      if (this._waypointTap) this.map.off('click', this._waypointTap);
     },
 
     enterExplore() {

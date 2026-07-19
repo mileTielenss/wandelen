@@ -1717,6 +1717,23 @@ await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
     return { content: m.getPopup() ? m.getPopup().getContent() : '', open };
   });
   t('bordje aantikbaar → popup met naam opent', pop.open && /\w/.test(pop.content), JSON.stringify(pop));
+  // Touch-tolerant: een tik NAAST een badge opent toch het dichtstbijzijnde punt.
+  t('tik naast een badge → dichtstbijzijnde punt opent', await page.evaluate(() => {
+    MapView.map.closePopup();
+    const m = MapView.waypointLayer.getLayers()[0];
+    const p = MapView.map.latLngToContainerPoint(m.getLatLng());
+    const q = L.point(p.x + 25, p.y + 25);
+    MapView.map.fire('click', { containerPoint: q, latlng: MapView.map.containerPointToLatLng(q) });
+    return !!document.querySelector('.leaflet-popup');
+  }));
+  // Ver van alle bordjes → geen popup (drempel ~34 px).
+  t('tik ver van alle bordjes → geen popup', await page.evaluate(() => {
+    MapView.map.closePopup();
+    MapView.map.setView([50.99, 5.62], 15, { animate: false });
+    const q = L.point(120, 120);
+    MapView.map.fire('click', { containerPoint: q, latlng: MapView.map.containerPointToLatLng(q) });
+    return !document.querySelector('.leaflet-popup');
+  }));
   // REGRESSIE: bordjes horen bij de route → blijven zichtbaar ook als de
   // knooppunten-schakelaar UIT staat (ze zijn géén knooppunten).
   await page.evaluate(() => { App.setOverlay('nodes', false); });
@@ -1729,6 +1746,10 @@ await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
     const had = !!MapView.waypointLayer;
     MapView.enterExplore();
     return had && !MapView.waypointLayer;
+  }));
+  t('waypoint-tap zonder laag → veilige no-op', await page.evaluate(() => {
+    MapView._waypointNearestTap({ containerPoint: L.point(10, 10) }); // geen laag → return
+    return true;
   }));
   await page.click('#btn-back');
   await sleep(200);
