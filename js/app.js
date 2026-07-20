@@ -10,7 +10,7 @@
   //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen.
-  const APP_VERSION = '5';
+  const APP_VERSION = '6';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -404,7 +404,9 @@
     // ---------- Download-paneel: teller + routelijst ----------
     _setExploreCount(text) { $('explore-count').textContent = text; },
 
-    _stateIcon(s) { return s === 'klaar' ? '✓' : s === 'laden' ? '↻' : '·'; },
+    // Enkel nog-ladende routes staan in de lijst: '·' wacht, '↻' bezig. (Klaar =
+    // uit de lijst, dus geen klaar-icoon meer nodig.)
+    _stateIcon(s) { return s === 'laden' ? '↻' : '·'; },
 
     // Lijst-item uit een reeds geladen route (status = klaar).
     _itemFromRoute(r) {
@@ -414,14 +416,17 @@
     _renderExploreList(items) {
       this._exploreItems = items;
       const box = $('explore-list');
-      box.hidden = !items.length;
+      // De lijst is enkel voor routes die nog DOWNLOADEN. Al-geladen routes (status
+      // 'klaar') staan op de kaart en kies je daar — die horen hier niet.
+      const pending = items.filter((it) => it.status !== 'klaar');
+      box.hidden = !pending.length;
       // Nieuwe lijst → altijd uitgeklapt tonen; de inklap-knop verschijnt zodra er
       // iets in de lijst staat (anders is er niets om in te klappen).
-      $('explore-collapse').hidden = !items.length;
+      $('explore-collapse').hidden = !pending.length;
       $('explore-bar').classList.remove('is-collapsed');
       $('explore-collapse').textContent = '▾';
       box.innerHTML = '';
-      for (const it of items) {
+      for (const it of pending) {
         const b = document.createElement('button');
         b.className = 'explore-item';
         b.dataset.rid = it.rid;
@@ -445,8 +450,19 @@
     _setExploreItemStatus(rid, status) {
       const it = (this._exploreItems || []).find((x) => x.rid === rid);
       if (it) it.status = status;
-      const el = $('explore-list').querySelector('[data-rid="' + rid + '"] .x-state');
-      if (el) { el.textContent = this._stateIcon(status); el.className = 'x-state' + (status === 'laden' ? ' laden' : ''); }
+      const box = $('explore-list');
+      const el = box.querySelector('[data-rid="' + rid + '"]');
+      if (!el) return;
+      // Klaar = op de kaart → uit de "nog aan het downloaden"-lijst halen. Wordt de
+      // lijst daardoor leeg, verberg 'm (en de inklap-knop): alles staat op de kaart.
+      if (status === 'klaar') {
+        el.remove();
+        if (!box.querySelector('.explore-item')) { box.hidden = true; $('explore-collapse').hidden = true; }
+        return;
+      }
+      const st = el.querySelector('.x-state');
+      st.textContent = this._stateIcon(status);
+      st.className = 'x-state' + (status === 'laden' ? ' laden' : '');
     },
 
     _highlightExploreItem(rid) {
@@ -455,10 +471,9 @@
       }
     },
 
-    // Tik op een route in de lijst: al geladen → kiezen; nog niet → nu ophalen (voorrang).
+    // Tik op een nog-ladende route in de lijst: haal díe nu op (voorrang). Al-geladen
+    // routes staan niet meer in de lijst (die kies je op de kaart).
     async _onExploreItemTap(rid) {
-      const loaded = this._exploreRoutes.find((r) => r.id === rid);
-      if (loaded) { this._onExplorePick(loaded); MapView.selectExplore(rid); return; }
       const it = (this._exploreItems || []).find((x) => x.rid === rid);
       if (!it) return;
       this._setExploreItemStatus(rid, 'laden');
@@ -587,11 +602,6 @@
         const items = list.map((l) => ({
           rid: 'osm-' + l.id, id: l.id, name: l.name, ref: l.ref, colour: l.colour, distance: l.distance, status: 'wachten',
         }));
-        if (!this._selectedExplore) {
-          MapView.startExploreRender(onPick);
-          this._renderExploreList(items);
-          this._setExploreCount(`${items.length} route${items.length !== 1 ? 's' : ''} gevonden — ophalen…`);
-        }
 
         // Fase 2 — geometrie in kleine BROKKEN (meerdere routes per aanvraag),
         // dichtste eerst, met een pool van 2. Eén-route-per-aanvraag vuurde te veel
@@ -619,6 +629,14 @@
         for (const it of items) {
           const c = cachedById.get(it.rid);
           if (c) { cachedItems.push(it); cachedRoutes.push(c); } else fresh.push(it);
+        }
+
+        if (!this._selectedExplore) {
+          MapView.startExploreRender(onPick);
+          // De lijst toont enkel de nog te downloaden routes; gecachede tekenen we
+          // meteen op de kaart (die staan dus niet in de lijst).
+          this._renderExploreList(fresh);
+          this._setExploreCount(`${items.length} route${items.length !== 1 ? 's' : ''} gevonden — ophalen…`);
         }
         if (cachedRoutes.length) drawPart(cachedItems, cachedRoutes);
 
