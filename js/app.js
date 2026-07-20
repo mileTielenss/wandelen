@@ -10,7 +10,7 @@
   //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen.
-  const APP_VERSION = '4';
+  const APP_VERSION = '5';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -600,8 +600,6 @@
         // verschijnen nu meerdere routes samen op de kaart.
         const all = [];
         const BATCH = 6;
-        const batches = [];
-        for (let k = 0; k < items.length; k += BATCH) batches.push(items.slice(k, k + BATCH));
         const drawPart = (grp, part) => {
           const got = new Set(part.map((r) => r.id));
           for (const it of grp) this._setExploreItemStatus(it.rid, got.has(it.rid) ? 'klaar' : 'wachten');
@@ -612,6 +610,20 @@
             this._setExploreCount(`${all.length} van ${items.length} gedownload`);
           }
         };
+
+        // Al eerder opgehaalde routes NIET opnieuw downloaden — teken ze meteen uit
+        // de opslag en haal enkel de nog-onbekende via Overpass. (Verwijder je de
+        // route/regio, dan is hij weg uit de cache en wordt hij wél opnieuw gehaald.)
+        const cachedById = this._cachedRouteById();
+        const cachedItems = [], cachedRoutes = [], fresh = [];
+        for (const it of items) {
+          const c = cachedById.get(it.rid);
+          if (c) { cachedItems.push(it); cachedRoutes.push(c); } else fresh.push(it);
+        }
+        if (cachedRoutes.length) drawPart(cachedItems, cachedRoutes);
+
+        const batches = [];
+        for (let k = 0; k < fresh.length; k += BATCH) batches.push(fresh.slice(k, k + BATCH));
         await this._runPool(batches, 2, async (grp) => {
           for (const it of grp) this._setExploreItemStatus(it.rid, 'laden');
           let part;
@@ -622,10 +634,10 @@
         });
         if (stale()) return;
         // Nog niets binnen (bv. de pool-aanvragen liepen op een rate limit)? Eén
-        // laatste, gecombineerde poging voor de dichtste routes — één aanvraag =
-        // de kleinste kans op een limiet — vóór we opgeven.
-        if (!all.length) {
-          const grp = items.slice(0, 12);
+        // laatste, gecombineerde poging voor de dichtste nog-onbekende routes — één
+        // aanvraag = de kleinste kans op een limiet — vóór we opgeven.
+        if (!all.length && fresh.length) {
+          const grp = fresh.slice(0, 12);
           drawPart(grp, await Overpass.fetchRoutesByIds(grp.map((it) => it.id), ctrl.signal));
           if (stale()) return;
         }
@@ -721,6 +733,17 @@
       MapView.clearExplore();
       await this.refreshList();
       this.openRoute(route.id);
+    },
+
+    // Alle al-opgeslagen routes (uit elke regio + de verken-cache), op id. Route-id's
+    // (osm-<relId>) zijn uniek, dus hebben we een route ergens gecachet, dan hoeven we
+    // hem niet opnieuw op te halen — ook niet bij "Zoek hier".
+    _cachedRouteById() {
+      const map = new Map();
+      for (const reg of this._regions) {
+        for (const r of reg.routes || []) if (r.segments && !map.has(r.id)) map.set(r.id, r);
+      }
+      return map;
     },
 
     _routesFromRegions(bounds, freshOnly) {

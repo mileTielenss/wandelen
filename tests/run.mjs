@@ -1532,6 +1532,35 @@ await scenario('S12c progressief laden — takken', {
     Overpass.fetchRouteList = origList;
     ok('exploreZoomIn met onbekende zoom/centrum', true);
 
+    // 12) _cachedRouteById: regio zonder routes overslaan (|| []), segment-loze routes
+    //     negeren, en dubbele id's ontdubbelen (basis van "cache niet opnieuw ophalen").
+    App._regions = [
+      { id: 'kaal', bounds: {} }, // geen routes-veld → || []
+      { id: 'a', routes: [{ id: 'osm-5', segments: [[[51.31, 5.40], [51.311, 5.40]]] },
+                          { id: 'osm-6', segments: null }] }, // osm-6 zonder geometrie → overslaan
+      { id: 'b', routes: [{ id: 'osm-5', segments: [[[51.31, 5.40], [51.311, 5.40]]] }] }, // dubbele osm-5
+    ];
+    const cmap = App._cachedRouteById();
+    ok('cachedRouteById: routeloze regio + segment-loze + dubbele overgeslagen',
+      cmap.size === 1 && cmap.has('osm-5') && !cmap.has('osm-6'));
+
+    // 13) Al-gecachede route wordt NIET opnieuw opgehaald, óók niet bij "Zoek hier"
+    //     (force): fase 1 vindt hem in de lijst, fase 2 tekent hem uit de opslag.
+    prep();
+    App._selectedExplore = null;
+    App._regions = [{ id: 'region-cache', bounds: { minLat: 51.30, minLng: 5.39, maxLat: 51.33, maxLng: 5.42 },
+      routes: [{ id: 'osm-42', name: 'Gecachet', ref: 'R', colour: '#dc2626', _col: '#dc2626', distance: 400,
+        segments: [[[51.311, 5.405], [51.313, 5.405]]], coords: [[51.311, 5.405]] }],
+      nodes: [], horeca: [], savedAt: new Date().toISOString() }];
+    Overpass.fetchRouteList = async () => [{ id: 42, name: 'Gecachet', center: { lat: 51.312, lng: 5.405 } }];
+    let geomCalls = 0;
+    Overpass.fetchRoutesByIds = async () => { geomCalls++; return []; };
+    await App._exploreFetch(true);
+    ok('gecachede route getekend zonder opnieuw op te halen (force)',
+      geomCalls === 0 && App._exploreRoutes.some((r) => r.id === 'osm-42'));
+    Overpass.fetchRouteList = origList;
+    Overpass.fetchRoutesByIds = origGeom;
+
     // 6) Lagen-sheet met nog lege tellingen (nc/hc null) → geen "(… )".
     MapView._nodeCount = null; MapView._horecaCount = null;
     App.openLayers();

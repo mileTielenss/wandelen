@@ -1,11 +1,22 @@
 .update-banner {
-  position: fixed; left: 0; right: 0; top: 0; z-index: 2000;
-  display: flex; align-items: center; justify-content: center; gap: 14px;
-  padding: 10px 14px calc(10px + env(safe-area-inset-top)); padding-top: max(10px, env(safe-area-inset-top));
-  background: #2563eb; color: #fff; font-size: 15px; font-weight: 600;
-  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  position: fixed; left: 12px; right: 12px; top: calc(var(--safe-top) + 12px);
+  z-index: 2000; display: flex; align-items: center; gap: 12px;
+  background: linear-gradient(135deg, #223047, #131c2e);
+  color: var(--text); border: 1px solid var(--line);
+  border-radius: 16px; padding: 11px 12px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.55);
+  animation: banner-in .3s cubic-bezier(.2,.8,.2,1);
 }
-.update-banner .primary { flex: none; padding: 7px 14px; font-size: 14px; }
+.update-banner .ub-icon {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 16px;
+  background: rgba(34,197,94,.16);
+}
+.update-banner .ub-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.update-banner .ub-text strong { font-size: 14.5px; font-weight: 600; color: #f8fafc; }
+.update-banner .ub-text small { font-size: 12px; color: var(--muted); }
+.update-banner .primary { flex: none; padding: 9px 16px; font-size: 14px; border-radius: 11px; }
+@keyframes banner-in { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
 
 :root {
   --bg: #0f172a;
