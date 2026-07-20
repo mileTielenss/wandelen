@@ -1975,7 +1975,7 @@ await scenario('S20 nieuwe-versie-melding', { noOverpass: true, noKomoot: true }
 
   // Er staat een nieuwere build live → version.json geeft "2" → balk verschijnt.
   await context.route((u) => u.pathname.endsWith('version.json'), (r) =>
-    r.fulfill({ status: 200, contentType: 'application/json', body: '{"version":"2"}' }));
+    r.fulfill({ status: 200, contentType: 'application/json', body: '{"version":"9999"}' }));
   await page.evaluate(() => App.checkForUpdate());
   await page.waitForFunction(() => !document.getElementById('update-banner').hidden, null, { timeout: 5000 });
   t('nieuwere versie → bijwerk-balk verschijnt', true);

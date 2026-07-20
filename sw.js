@@ -6,7 +6,7 @@
 //   2. APP_VERSION (js/app.js) → 'N'
 //   3. APP_CACHE (hieronder)   → 'wandelen-app-vN'
 // (1 en 2 sturen de "nieuwe versie"-balk; 3 forceert een verse app-shell.)
-const APP_CACHE = 'wandelen-app-v5';
+const APP_CACHE = 'wandelen-app-v6';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];

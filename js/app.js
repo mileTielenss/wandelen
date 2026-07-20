@@ -9,7 +9,7 @@
   //   3. APP_CACHE (sw.js)       → 'wandelen-app-vN'
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen; APP_CACHE forceert een verse app-shell.
-  const APP_VERSION = '1';
+  const APP_VERSION = '2';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
