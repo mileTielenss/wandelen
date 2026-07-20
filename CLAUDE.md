@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (377 asserts) + coverage-rapport
+npm install && npm test         # testsuite (384 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -89,8 +89,13 @@ status (· wachten → ↻ laden → ✓ klaar), en — bij een te grote view �
    gebruiker zag wel de lijst maar geen lijnen ("kon routes niet laden"). Brokken + pool 2 =
    veel minder calls. **Vangnet:** levert de hele pool niets op, dan volgt nog **één gecombineerde
    aanvraag** voor de dichtste ~12 routes (één call = kleinste kans op een limiet) vóór we opgeven.
-   Een tik op een nog-niet-geladen lijst-item (`_onExploreItemTap`) haalt díe route meteen op
-   (voorrang). Kiezen kan via de kaart óf de lijst.
+   **Cache-hergebruik:** vóór fase 2 splitst `_cachedRouteById()` de lijst in reeds-opgeslagen
+   routes (id in een `region-*`/`explore-cache`, mét geometrie) en nieuwe. Opgeslagen routes worden
+   **meteen uit de opslag getekend en NIET opnieuw opgehaald** — óók niet bij "Zoek hier" (force);
+   enkel de nog-onbekende gaan naar Overpass. (Verdwijnt een route uit de cache, dan wordt hij weer
+   gehaald.) Een tik op een nog-niet-geladen lijst-item (`_onExploreItemTap`) haalt díe route
+   meteen op (voorrang). Kiezen kan via de kaart óf de lijst. De routelijst is **inklapbaar**
+   (`#explore-collapse` → `App.toggleExploreList`) zodat een lange lijst de kaart niet verbergt.
 3. **Overlays** (`Overpass.fetchOverlaysArea` → `out center qt`): parallel gestart,
    blokkeert het tekenen van routes niet.
 
