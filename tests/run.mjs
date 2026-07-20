@@ -1418,13 +1418,31 @@ await scenario('S12c progressief laden — takken', {
     await App._exploreFetch(true);
     ok('leeg geometrie-antwoord → wachten + terugval', true);
 
-    // 7) Stale vóór een later brokje (pool met >3 items; eerste maakt stale).
+    // 7) Stale tijdens het brokje (meerdere routes; de aanvraag maakt stale).
     prep();
     Overpass.fetchRouteList = async () => [42, 43, 44, 45].map((id) => ({ id, name: 'R' + id, center: { lat: 51.312, lng: 5.405 } }));
     let geomN = 0;
     Overpass.fetchRoutesByIds = async () => { geomN++; if (geomN === 1) App._exploreActive = false; return []; };
     await App._exploreFetch(true);
-    ok('stale vóór later brokje → stop', true);
+    ok('stale tijdens brokje → stop', true);
+
+    // 7b) Pool levert niets → gecombineerde fallback vult de kaart alsnog (recovery
+    //     van de "kon routes niet laden"-situatie: de losse pool-calls faalden,
+    //     één gebundelde aanvraag lukt wél).
+    prep();
+    Overpass.fetchRouteList = async () => [{ id: 42, name: 'R', ref: 'R', center: { lat: 51.312, lng: 5.405 } }];
+    let fbN = 0;
+    Overpass.fetchRoutesByIds = async () => (++fbN === 1 ? [] : [{ ...oneRoute }]);
+    await App._exploreFetch(true);
+    ok('pool leeg → gecombineerde fallback vult de kaart', App._exploreRoutes.length === 1);
+
+    // 7c) Pool leeg, fallback loopt en dan verlaat de gebruiker verkennen → stop.
+    prep();
+    Overpass.fetchRouteList = async () => [{ id: 42, name: 'R', center: { lat: 51.312, lng: 5.405 } }];
+    let fb2 = 0;
+    Overpass.fetchRoutesByIds = async () => { if (++fb2 === 2) App._exploreActive = false; return []; };
+    await App._exploreFetch(true);
+    ok('fallback + stale → stop', true);
 
     // 8) Catch-terugval met MEERDERE opgeslagen routes (meervoud, offline cache).
     prep();

@@ -581,25 +581,42 @@
           this._setExploreCount(`${items.length} route${items.length !== 1 ? 's' : ''} gevonden — ophalen…`);
         }
 
-        // Fase 2 — geometrie per route, dichtste eerst, 1 voor 1 (pool van 3); elke
-        // route verschijnt meteen op de kaart én in de lijst (status → klaar).
+        // Fase 2 — geometrie in kleine BROKKEN (meerdere routes per aanvraag),
+        // dichtste eerst, met een pool van 2. Eén-route-per-aanvraag vuurde te veel
+        // Overpass-calls tegelijk af → rate limits → álle geometrie faalde ("kon
+        // routes niet laden"), ook al kwam de lijst wél binnen. Per brokje
+        // verschijnen nu meerdere routes samen op de kaart.
         const all = [];
-        await this._runPool(items, 3, async (it) => {
-          if (stale()) return;
-          this._setExploreItemStatus(it.rid, 'laden');
-          let part;
-          try { part = await Overpass.fetchRoutesByIds([it.id], ctrl.signal); }
-          catch (_) { this._setExploreItemStatus(it.rid, 'wachten'); return; }
-          if (stale()) return;
-          if (!part.length) { this._setExploreItemStatus(it.rid, 'wachten'); return; }
-          all.push(part[0]);
-          this._setExploreItemStatus(it.rid, 'klaar');
+        const BATCH = 6;
+        const batches = [];
+        for (let k = 0; k < items.length; k += BATCH) batches.push(items.slice(k, k + BATCH));
+        const drawPart = (grp, part) => {
+          const got = new Set(part.map((r) => r.id));
+          for (const it of grp) this._setExploreItemStatus(it.rid, got.has(it.rid) ? 'klaar' : 'wachten');
+          if (!part.length) return;
+          all.push(...part);
           if (!this._selectedExplore) {
             MapView.addExploreRoutes(part);
             this._setExploreCount(`${all.length} van ${items.length} gedownload`);
           }
+        };
+        await this._runPool(batches, 2, async (grp) => {
+          for (const it of grp) this._setExploreItemStatus(it.rid, 'laden');
+          let part;
+          try { part = await Overpass.fetchRoutesByIds(grp.map((it) => it.id), ctrl.signal); }
+          catch (_) { for (const it of grp) this._setExploreItemStatus(it.rid, 'wachten'); return; }
+          if (stale()) return;
+          drawPart(grp, part);
         });
         if (stale()) return;
+        // Nog niets binnen (bv. de pool-aanvragen liepen op een rate limit)? Eén
+        // laatste, gecombineerde poging voor de dichtste routes — één aanvraag =
+        // de kleinste kans op een limiet — vóór we opgeven.
+        if (!all.length) {
+          const grp = items.slice(0, 12);
+          drawPart(grp, await Overpass.fetchRoutesByIds(grp.map((it) => it.id), ctrl.signal));
+          if (stale()) return;
+        }
         if (!all.length) throw new Error('geen geometrie');
 
         this._exploreRoutes = all;
