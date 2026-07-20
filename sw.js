@@ -1,6 +1,11 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
+// RELEASE-CHECKLIST — hoog deze 3 samen op bij élke nieuwe release (hou ze gelijk):
+//   1. version.json         → { "version": "N" }
+//   2. APP_VERSION (js/app.js) → 'N'
+//   3. APP_CACHE (hieronder)   → 'wandelen-app-vN'
+// (1 en 2 sturen de "nieuwe versie"-balk; 3 forceert een verse app-shell.)
 const APP_CACHE = 'wandelen-app-v5';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.

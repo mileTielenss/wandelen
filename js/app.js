@@ -3,9 +3,12 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  // Versienummer van deze build. Ophogen bij élke release (samen met version.json
-  // en de APP_CACHE-naam in sw.js). De app vergelijkt dit met het ongecachete
-  // version.json om een "nieuwe versie"-balk te tonen.
+  // RELEASE-CHECKLIST — hoog deze 3 samen op bij élke nieuwe release (hou ze gelijk):
+  //   1. version.json            → { "version": "N" }
+  //   2. APP_VERSION (hieronder) → 'N'
+  //   3. APP_CACHE (sw.js)       → 'wandelen-app-vN'
+  // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
+  // een "nieuwe versie"-balk te tonen; APP_CACHE forceert een verse app-shell.
   const APP_VERSION = '1';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
