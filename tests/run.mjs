@@ -1966,6 +1966,63 @@ await scenario('S19 KML-import', { noKomoot: true }, async (page, context) => {
   t('onbekende link → noemt Komoot/GPX/KML', true);
 });
 
+/* ---------- S20: nieuwe-versie-melding ---------- */
+await scenario('S20 nieuwe-versie-melding', { noOverpass: true, noKomoot: true }, async (page, context) => {
+  await open(page);
+  // init() deed al één succesvolle check tegen het echte version.json (=1) → gelijk aan
+  // APP_VERSION, dus geen balk. (dekt het succespad + de "gelijk"-tak van checkForUpdate)
+  t('gelijke versie → geen bijwerk-balk', await page.evaluate(() => document.getElementById('update-banner').hidden));
+
+  // Er staat een nieuwere build live → version.json geeft "2" → balk verschijnt.
+  await context.route((u) => u.pathname.endsWith('version.json'), (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '{"version":"2"}' }));
+  await page.evaluate(() => App.checkForUpdate());
+  await page.waitForFunction(() => !document.getElementById('update-banner').hidden, null, { timeout: 5000 });
+  t('nieuwere versie → bijwerk-balk verschijnt', true);
+
+  // Netwerkfout tijdens de check → stil overslaan (catch-tak), geen balk, geen JS-fout.
+  await page.evaluate(() => { document.getElementById('update-banner').hidden = true; });
+  await context.route((u) => u.pathname.endsWith('version.json'), (r) => r.abort());
+  await page.evaluate(() => App.checkForUpdate());
+  await sleep(150);
+  t('onbereikbaar version.json → stil (geen balk)', await page.evaluate(() => document.getElementById('update-banner').hidden));
+
+  // "Nu bijwerken": SW deregistreren + álle caches wissen + herladen. We vervangen
+  // enkel _reload door een spy (om niet écht te navigeren) en maken een extra cache aan
+  // zodat de caches.delete-lus iets te wissen heeft. De echte knop-listener wordt getikt.
+  await page.evaluate(async () => {
+    App.__origReload = App._reload;
+    window.__reloaded = 0;
+    App._reload = function () { window.__reloaded++; };
+    const c = await caches.open('wandelen-test-xyz');
+    await c.put('/x', new Response('x'));
+    App.showUpdateBanner();
+  });
+  await page.click('#btn-update');
+  await page.waitForFunction(() => window.__reloaded === 1, null, { timeout: 5000 });
+  t('Nu bijwerken → SW weg, caches leeg, herladen', await page.evaluate(async () => {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const keys = await caches.keys();
+    return regs.length === 0 && keys.length === 0 && window.__reloaded === 1;
+  }));
+
+  // Zelfde knop zonder serviceWorker- én zonder Cache Storage-API → de twee valse
+  // takken van forceReload; nog steeds veilig herladen.
+  t('forceReload zonder SW/caches → veilig herladen', await page.evaluate(async () => {
+    window.__reloaded = 0;
+    delete Navigator.prototype.serviceWorker;
+    Object.defineProperty(window, 'caches', { configurable: true, value: undefined });
+    await App.forceReload();
+    return window.__reloaded === 1 && !('serviceWorker' in navigator) && !window.caches;
+  }));
+
+  // Tot slot de echte _reload()-body (location.reload) uitvoeren voor volledige dekking;
+  // dit navigeert echt, dus het is de laatste actie (context wordt vernietigd → catch).
+  await page.evaluate(() => { App._reload = App.__origReload; App._reload(); }).catch(() => {});
+  await page.waitForLoadState('load').catch(() => {});
+  t('_reload() voert location.reload uit', true);
+});
+
 /* ================================================================== */
 await browser.close();
 server.close();

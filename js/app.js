@@ -3,6 +3,13 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  // RELEASE-CHECKLIST — hoog deze 3 samen op bij élke nieuwe release (hou ze gelijk):
+  //   1. version.json            → { "version": "N" }
+  //   2. APP_VERSION (hieronder) → 'N'
+  //   3. APP_CACHE (sw.js)       → 'wandelen-app-vN'
+  // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
+  // een "nieuwe versie"-balk te tonen; APP_CACHE forceert een verse app-shell.
+  const APP_VERSION = '1';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -19,11 +26,46 @@
       });
       this._wire();
       this.updateStatus();
+      // Eén check bij het opstarten — géén periodieke poll. Dit is een offline-first
+      // app: elke 5 min naar het netwerk reiken botst met dat principe (en de batterij),
+      // en offline zou het toch stil falen. Bij het openen is er meestal net wél internet.
+      this.checkForUpdate();
       await this.seedDefault();
       await this.refreshList();
       try { this._regions = await DB.allRegions(); } catch (_) { this._regions = []; }
       this._handleSharedUrl();
     },
+
+    // ---------- Nieuwe-versie-melding ----------
+    // Haal version.json ONGECACHET op en vergelijk met APP_VERSION; bij verschil
+    // staat er een nieuwere build live → toon de bijwerk-balk. Draait één keer bij
+    // het opstarten (niet periodiek — offline-first). (sw.js cachet version.json
+    // nooit, anders lees je de oude waarde.)
+    async checkForUpdate() {
+      try {
+        const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+        const { version } = await res.json();
+        if (version !== APP_VERSION) this.showUpdateBanner();
+      } catch (_) { /* offline/onbereikbaar: stil overslaan, volgende keer opnieuw */ }
+    },
+
+    showUpdateBanner() { $('update-banner').hidden = false; },
+
+    // "Nu bijwerken": alles wissen (service worker + caches) en hard herladen,
+    // zodat je gegarandeerd de nieuwste bestanden krijgt.
+    async forceReload() {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      this._reload();
+    },
+
+    _reload() { location.reload(); },
 
     // ---------- Status: internet + GPS ----------
     // Telt lopende externe requests, zodat het internet-lampje enkel brandt
@@ -962,6 +1004,7 @@
       $('ov-horeca-route').addEventListener('change', (e) => this.setOverlay('horecaRoute', e.target.checked));
       $('ov-horeca-all').addEventListener('change', (e) => this.setOverlay('horecaAll', e.target.checked));
 
+      $('btn-update').addEventListener('click', () => this.forceReload());
       $('btn-explore').addEventListener('click', () => this.startExplore());
       $('explore-search').addEventListener('click', () => {
         // Expliciet opnieuw zoeken: wis de vorige keuze en haal vers op via het

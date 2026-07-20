@@ -1,3 +1,12 @@
+.update-banner {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-top)); padding-top: max(10px, env(safe-area-inset-top));
+  background: #2563eb; color: #fff; font-size: 15px; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+.update-banner .primary { flex: none; padding: 7px 14px; font-size: 14px; }
+
 :root {
   --bg: #0f172a;
   --bg-soft: #1e293b;

@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (368 asserts) + coverage-rapport
+npm install && npm test         # testsuite (375 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -221,10 +221,36 @@ Valkuilen die al eens gekost hebben (niet opnieuw ontdekken):
 
 App-shell = **stale-while-revalidate**: gebruikers krijgen updates automatisch bij
 het volgende bezoek (één herstart van de app na deploy). Tegels = cache-first.
-`APP_CACHE`-versie (`wandelen-app-v4`) hoef je door SWR meestal niet te bumpen;
+`APP_CACHE`-versie (`wandelen-app-v5`) hoef je door SWR meestal niet te bumpen;
 doe het wél als je bestanden **verwijdert/hernoemt** of `APP_ASSETS` wijzigt.
 Voeg je een nieuw statisch bestand toe → zet het in `APP_ASSETS` in `sw.js`
 én laad het in `index.html`.
+
+### "Nieuwe versie beschikbaar"-melding
+
+De app onthoudt zijn eigen buildnummer (`APP_VERSION` in `js/app.js`) en vergelijkt
+dat **één keer bij het opstarten** met een **ongecachet** `version.json`
+(`App.checkForUpdate` → `fetch('version.json?t='+Date.now(), {cache:'no-store'})`).
+Bewust **geen periodieke poll**: dit is een offline-first app, dus elke paar minuten
+naar het netwerk reiken botst met dat principe (en de batterij); bij het openen is er
+meestal net wél internet, en offline faalt de check toch stil.
+Verschillen ze, dan verschijnt de balk `#update-banner` ("Nieuwe versie beschikbaar").
+De knop **Nu bijwerken** (`App.forceReload`) deregistreert de service worker, wist
+**álle** caches en herlaadt hard — zo krijg je gegarandeerd de nieuwe bestanden,
+óók als SWR nog de oude shell serveert. `sw.js` **onderschept `version.json` nooit**
+(`if (url.pathname.endsWith('version.json')) return;` boven in de fetch-handler),
+anders lees je de oude waarde uit de cache. `version.json` staat daarom **niet** in
+`APP_ASSETS`.
+
+**Per nieuwe release ophogen (3 plekken, hou ze gelijk):**
+1. `version.json` → `{ "version": "N" }` (het nummer dat de draaiende app ophaalt)
+2. `APP_VERSION` in `js/app.js` → `'N'` (het nummer dat de build van zichzelf onthoudt)
+3. `APP_CACHE` in `sw.js` → `'wandelen-app-vN'` (nieuwe cache-naam forceert verse shell)
+
+1 en 2 sturen de melding aan; ze moeten **na** de deploy verschillen van wat de
+gebruiker draait. 3 zorgt dat "Nu bijwerken" (en de activate-opruiming) écht schone
+bestanden binnenhaalt. Test: `App.checkForUpdate`/`forceReload`/`_reload` + de knop
+in scenario **S20**.
 
 ## Hernieuwbare assets
 
