@@ -66,7 +66,8 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
 - **Automatisch bijwerken**: staat er een nieuwe versie van de app online, dan verschijnt
   bovenaan een balk **“Nieuwe versie beschikbaar”** met **Nu bijwerken**. Eén tik wist de
-  oude cache en laadt de nieuwste versie. De app controleert dit bij het openen en elke paar minuten.
+  oude cache en laadt de nieuwste versie. De app controleert dit **bij het openen** (offline-first:
+  geen achtergrond-poll die batterij en data kost).
 - **Status-indicators**: de lampjes bovenaan tonen **gebruik**, geen beschikbaarheid —
   grijs als de app niets doet, **internet actief** alleen tijdens echt verkeer, en de
   GPS-stand (uit / zoekt… / volgt / geweigerd). Tracking claimt pas "volgt" als er

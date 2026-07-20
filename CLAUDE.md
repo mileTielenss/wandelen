@@ -229,8 +229,11 @@ Voeg je een nieuw statisch bestand toe → zet het in `APP_ASSETS` in `sw.js`
 ### "Nieuwe versie beschikbaar"-melding
 
 De app onthoudt zijn eigen buildnummer (`APP_VERSION` in `js/app.js`) en vergelijkt
-dat bij het opstarten én **elke 5 min** met een **ongecachet** `version.json`
+dat **één keer bij het opstarten** met een **ongecachet** `version.json`
 (`App.checkForUpdate` → `fetch('version.json?t='+Date.now(), {cache:'no-store'})`).
+Bewust **geen periodieke poll**: dit is een offline-first app, dus elke paar minuten
+naar het netwerk reiken botst met dat principe (en de batterij); bij het openen is er
+meestal net wél internet, en offline faalt de check toch stil.
 Verschillen ze, dan verschijnt de balk `#update-banner` ("Nieuwe versie beschikbaar").
 De knop **Nu bijwerken** (`App.forceReload`) deregistreert de service worker, wist
 **álle** caches en herlaadt hard — zo krijg je gegarandeerd de nieuwe bestanden,

@@ -23,9 +23,10 @@
       });
       this._wire();
       this.updateStatus();
-      // Meteen én elke 5 min checken of er een nieuwe versie live staat.
+      // Eén check bij het opstarten — géén periodieke poll. Dit is een offline-first
+      // app: elke 5 min naar het netwerk reiken botst met dat principe (en de batterij),
+      // en offline zou het toch stil falen. Bij het openen is er meestal net wél internet.
       this.checkForUpdate();
-      setInterval(this.checkForUpdate.bind(this), 5 * 60 * 1000);
       await this.seedDefault();
       await this.refreshList();
       try { this._regions = await DB.allRegions(); } catch (_) { this._regions = []; }
@@ -34,8 +35,9 @@
 
     // ---------- Nieuwe-versie-melding ----------
     // Haal version.json ONGECACHET op en vergelijk met APP_VERSION; bij verschil
-    // staat er een nieuwere build live → toon de bijwerk-balk. (sw.js cachet
-    // version.json nooit, anders lees je de oude waarde.)
+    // staat er een nieuwere build live → toon de bijwerk-balk. Draait één keer bij
+    // het opstarten (niet periodiek — offline-first). (sw.js cachet version.json
+    // nooit, anders lees je de oude waarde.)
     async checkForUpdate() {
       try {
         const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
