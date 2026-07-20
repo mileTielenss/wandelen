@@ -1,7 +1,7 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
-const APP_CACHE = 'wandelen-app-v4';
+const APP_CACHE = 'wandelen-app-v5';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];
@@ -55,6 +55,10 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // version.json NOOIT cachen/onderscheppen: de update-check moet altijd de
+  // verse waarde van het netwerk lezen (anders zie je de oude versie).
+  if (url.pathname.endsWith('version.json')) return;
 
   // Kaarttegels: cache-first (serveren zonder internet, en nieuw bekeken tegels bewaren)
   if (isTileHost(url.hostname)) {

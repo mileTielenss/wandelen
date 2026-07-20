@@ -64,6 +64,9 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Alles automatisch offline**: opent je een route met internet, dan downloadt de app
   de kaarttegels er meteen bij (hoogste resolutie, voortgang in de statusbalk). Route,
   knooppunten en horeca worden sowieso lokaal opgeslagen — geen aparte knop meer nodig.
+- **Automatisch bijwerken**: staat er een nieuwe versie van de app online, dan verschijnt
+  bovenaan een balk **“Nieuwe versie beschikbaar”** met **Nu bijwerken**. Eén tik wist de
+  oude cache en laadt de nieuwste versie. De app controleert dit bij het openen en elke paar minuten.
 - **Status-indicators**: de lampjes bovenaan tonen **gebruik**, geen beschikbaarheid —
   grijs als de app niets doet, **internet actief** alleen tijdens echt verkeer, en de
   GPS-stand (uit / zoekt… / volgt / geweigerd). Tracking claimt pas "volgt" als er
@@ -121,12 +124,12 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 368 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 375 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
 verkennen (download-paneel, hedged mirrors, zoom-poort, dichtste-eerst, cache, offline fallback), automatische
-offline-opslag, offline herstart via de service worker, statuslampjes, en
+offline-opslag, offline herstart via de service worker, de nieuwe-versie-melding, statuslampjes, en
 foutinjectie (kapotte IndexedDB, kapotte Cache-opslag, falende service-worker-registratie,
 ontbrekende GPS-API). Externe services worden gemockt.
 

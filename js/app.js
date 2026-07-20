@@ -3,6 +3,10 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  // Versienummer van deze build. Ophogen bij élke release (samen met version.json
+  // en de APP_CACHE-naam in sw.js). De app vergelijkt dit met het ongecachete
+  // version.json om een "nieuwe versie"-balk te tonen.
+  const APP_VERSION = '1';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -19,11 +23,44 @@
       });
       this._wire();
       this.updateStatus();
+      // Meteen én elke 5 min checken of er een nieuwe versie live staat.
+      this.checkForUpdate();
+      setInterval(this.checkForUpdate.bind(this), 5 * 60 * 1000);
       await this.seedDefault();
       await this.refreshList();
       try { this._regions = await DB.allRegions(); } catch (_) { this._regions = []; }
       this._handleSharedUrl();
     },
+
+    // ---------- Nieuwe-versie-melding ----------
+    // Haal version.json ONGECACHET op en vergelijk met APP_VERSION; bij verschil
+    // staat er een nieuwere build live → toon de bijwerk-balk. (sw.js cachet
+    // version.json nooit, anders lees je de oude waarde.)
+    async checkForUpdate() {
+      try {
+        const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+        const { version } = await res.json();
+        if (version !== APP_VERSION) this.showUpdateBanner();
+      } catch (_) { /* offline/onbereikbaar: stil overslaan, volgende keer opnieuw */ }
+    },
+
+    showUpdateBanner() { $('update-banner').hidden = false; },
+
+    // "Nu bijwerken": alles wissen (service worker + caches) en hard herladen,
+    // zodat je gegarandeerd de nieuwste bestanden krijgt.
+    async forceReload() {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      this._reload();
+    },
+
+    _reload() { location.reload(); },
 
     // ---------- Status: internet + GPS ----------
     // Telt lopende externe requests, zodat het internet-lampje enkel brandt
@@ -962,6 +999,7 @@
       $('ov-horeca-route').addEventListener('change', (e) => this.setOverlay('horecaRoute', e.target.checked));
       $('ov-horeca-all').addEventListener('change', (e) => this.setOverlay('horecaAll', e.target.checked));
 
+      $('btn-update').addEventListener('click', () => this.forceReload());
       $('btn-explore').addEventListener('click', () => this.startExplore());
       $('explore-search').addEventListener('click', () => {
         // Expliciet opnieuw zoeken: wis de vorige keuze en haal vers op via het
