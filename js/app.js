@@ -3,13 +3,14 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  // RELEASE-CHECKLIST — hoog deze 3 samen op bij élke nieuwe release (hou ze gelijk):
-  //   1. version.json            → { "version": "N" }
-  //   2. APP_VERSION (hieronder) → 'N'
-  //   3. APP_CACHE (sw.js)       → 'wandelen-app-vN'
+  // RELEASE-CHECKLIST bij élke nieuwe release:
+  //   1. version.json            → { "version": "N" }   ─┐ deze twee MOETEN gelijk zijn
+  //   2. APP_VERSION (hieronder) → 'N'                   ─┘ (test bewaakt dit)
+  //   3. APP_CACHE (sw.js)       → een NIEUWE naam (aparte cache-buster-teller, hoeft
+  //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
-  // een "nieuwe versie"-balk te tonen; APP_CACHE forceert een verse app-shell.
-  const APP_VERSION = '3';
+  // een "nieuwe versie"-balk te tonen.
+  const APP_VERSION = '4';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -414,6 +415,11 @@
       this._exploreItems = items;
       const box = $('explore-list');
       box.hidden = !items.length;
+      // Nieuwe lijst → altijd uitgeklapt tonen; de inklap-knop verschijnt zodra er
+      // iets in de lijst staat (anders is er niets om in te klappen).
+      $('explore-collapse').hidden = !items.length;
+      $('explore-bar').classList.remove('is-collapsed');
+      $('explore-collapse').textContent = '▾';
       box.innerHTML = '';
       for (const it of items) {
         const b = document.createElement('button');
@@ -428,6 +434,12 @@
         b.addEventListener('click', () => this._onExploreItemTap(it.rid));
         box.appendChild(b);
       }
+    },
+
+    // Routelijst in-/uitklappen zodat de kaart eronder zichtbaar wordt.
+    toggleExploreList() {
+      const collapsed = $('explore-bar').classList.toggle('is-collapsed');
+      $('explore-collapse').textContent = collapsed ? '▸' : '▾';
     },
 
     _setExploreItemStatus(rid, status) {
@@ -1033,6 +1045,7 @@
         this._exploreFetch(true);
       });
       $('explore-zoomin').addEventListener('click', () => this.exploreZoomIn());
+      $('explore-collapse').addEventListener('click', () => this.toggleExploreList());
       $('explore-follow').addEventListener('click', () => this.followSelected());
 
       $('menu-save').addEventListener('click', () => this.saveMenu());

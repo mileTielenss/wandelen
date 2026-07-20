@@ -13,10 +13,12 @@
 
   const HORECA = 'cafe|restaurant|bar|pub|fast_food|biergarten|ice_cream';
 
-  // Tussenstart tussen de hedged mirrors. Productie: 3,5 s (geef de eerste mirror
-  // een eerlijke voorsprong vóór we een tweede belasten). Tests verlagen dit zodat
-  // de foutpaden niet telkens seconden op deze staggers wachten.
-  let HEDGE_MS = 3500;
+  // Tussenstart tussen de hedged mirrors. Productie: 2 s — kort genoeg dat een trage
+  // of platliggende eerste mirror (kumi.systems lag er tijdens metingen weleens uit)
+  // snel wordt overgeslagen, lang genoeg dat een gezonde eerste mirror meestal wint
+  // vóór we een tweede belasten. Tests verlagen dit nog verder zodat de foutpaden
+  // niet telkens seconden op deze staggers wachten.
+  let HEDGE_MS = 2000;
 
   function buildQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;

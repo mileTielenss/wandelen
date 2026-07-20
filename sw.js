@@ -1,12 +1,13 @@
 /* Service worker: app volledig offline + kaarttegels serveren uit cache. */
 'use strict';
 
-// RELEASE-CHECKLIST — hoog deze 3 samen op bij élke nieuwe release (hou ze gelijk):
-//   1. version.json         → { "version": "N" }
-//   2. APP_VERSION (js/app.js) → 'N'
-//   3. APP_CACHE (hieronder)   → 'wandelen-app-vN'
-// (1 en 2 sturen de "nieuwe versie"-balk; 3 forceert een verse app-shell.)
-const APP_CACHE = 'wandelen-app-v7';
+// RELEASE-CHECKLIST bij élke nieuwe release:
+//   1. version.json            → { "version": "N" }   ─┐ gelijk houden
+//   2. APP_VERSION (js/app.js) → 'N'                   ─┘ (sturen de "nieuwe versie"-balk)
+//   3. APP_CACHE (hieronder)   → een NIEUWE naam die verse app-shell forceert. Aparte
+//      teller: hoeft NIET gelijk te zijn aan N (staat daarom op v7 bij versie 3), moet
+//      enkel wijzigen t.o.v. de vorige.
+const APP_CACHE = 'wandelen-app-v8';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];

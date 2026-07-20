@@ -247,15 +247,19 @@ De knop **Nu bijwerken** (`App.forceReload`) deregistreert de service worker, wi
 anders lees je de oude waarde uit de cache. `version.json` staat daarom **niet** in
 `APP_ASSETS`.
 
-**Per nieuwe release ophogen (3 plekken, hou ze gelijk):**
+**Per nieuwe release ophogen:**
 1. `version.json` → `{ "version": "N" }` (het nummer dat de draaiende app ophaalt)
 2. `APP_VERSION` in `js/app.js` → `'N'` (het nummer dat de build van zichzelf onthoudt)
-3. `APP_CACHE` in `sw.js` → `'wandelen-app-vN'` (nieuwe cache-naam forceert verse shell)
+3. `APP_CACHE` in `sw.js` → een **nieuwe** naam (verse shell forceren)
 
-1 en 2 sturen de melding aan; ze moeten **na** de deploy verschillen van wat de
-gebruiker draait. 3 zorgt dat "Nu bijwerken" (en de activate-opruiming) écht schone
-bestanden binnenhaalt. Test: `App.checkForUpdate`/`forceReload`/`_reload` + de knop
-in scenario **S20**.
+**1 en 2 moeten aan elkaar gelijk zijn** — ze sturen samen de melding aan (de balk
+verschijnt zodra een draaiende oude build merkt dat het live-`version.json` afwijkt van
+zijn eigen `APP_VERSION`). Een testregel bewaakt dit: bump je er maar één, dan faalt de
+suite (anders zou élke verse start de balk tonen). **3 is een aparte cache-buster-teller**
+— hij hoeft *niet* gelijk te zijn aan N (staat daarom op `v7` bij versie `3`), enkel te
+**wijzigen** t.o.v. de vorige, zodat "Nu bijwerken" en de activate-opruiming écht schone
+bestanden binnenhalen. Test: de versie-consistentie-assert boven in `tests/run.mjs` +
+`App.checkForUpdate`/`forceReload`/`_reload` + de knop in scenario **S20**.
 
 ## Hernieuwbare assets
 

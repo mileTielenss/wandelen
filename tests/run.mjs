@@ -82,6 +82,21 @@ function t(name, cond, extra = '') {
 const txt = async (page, sel) => ((await page.textContent(sel).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* ---------- Versie-consistentie ----------
+   version.json en APP_VERSION (js/app.js) MOETEN in de repo gelijk zijn: de app
+   vergelijkt ze bij het opstarten en toont de "nieuwe versie"-balk zodra ze
+   verschillen. Bump je er maar één, dan zou élke verse start de balk tonen — dat
+   vangt deze test. (APP_CACHE in sw.js is een APARTE cache-buster-teller — hij hoeft
+   enkel te WIJZIGEN voor een verse shell, niet gelijk te zijn aan het versienummer;
+   vandaar dat hij al op v7 staat terwijl de versie 3 is. We checken enkel z'n vorm.) */
+{
+  const vjson = JSON.parse(readFileSync(path.join(ROOT, 'version.json'), 'utf8')).version;
+  const appv = (readFileSync(path.join(ROOT, 'js/app.js'), 'utf8').match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];
+  const swCache = (readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/APP_CACHE\s*=\s*'([^']+)'/) || [])[1];
+  t('versie-consistentie: version.json == APP_VERSION', vjson === appv, `version.json=${vjson} APP_VERSION=${appv}`);
+  t('APP_CACHE heeft een geldige naam', /^wandelen-app-v\w+$/.test(swCache || ''), swCache);
+}
+
 /* ---------- coverage ---------- */
 const cov = new Map(); // url -> {len, bytes: Uint8Array}
 function addCoverage(entries) {
@@ -602,6 +617,15 @@ await scenario('S7 verkennen & volgen', {
   t('routelijst getoond', (await page.$$('.explore-item')).length > 3);
   const nLayers = await page.evaluate(() => Object.keys(MapView._exploreLayers).length);
   t('routes getekend (canvas)', nLayers > 3 && await page.evaluate(() => !!document.querySelector('#map canvas')), String(nLayers));
+
+  // Routelijst in-/uitklappen (anders bedekt een lange lijst de kaart).
+  t('inklap-knop zichtbaar bij een lijst', await page.isVisible('#explore-collapse'));
+  await page.click('#explore-collapse');
+  t('inklappen verbergt de lijst', await page.isHidden('#explore-list') &&
+    await page.evaluate(() => document.getElementById('explore-collapse').textContent === '▸'));
+  await page.click('#explore-collapse');
+  t('opnieuw tikken klapt weer uit', await page.isVisible('#explore-list') &&
+    await page.evaluate(() => document.getElementById('explore-collapse').textContent === '▾'));
 
   // brede raakzone aanwezig (onzichtbare dikke lijnen onder elke route)
   const hasHit = await page.evaluate(() => {

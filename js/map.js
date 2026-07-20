@@ -125,13 +125,20 @@
     },
 
     _horecaMarkers(horeca) {
-      return horeca.map((h) => L.marker([h.lat, h.lng], {
-        icon: L.divIcon({
-          className: '', html: `<div class="horeca-pin" title="${escapeHtml(h.n)}">${horecaEmoji(h.t)}</div>`,
-          iconSize: [24, 24], iconAnchor: [12, 12],
-        }),
-        keyboard: false,
-      }).bindTooltip((h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t), { direction: 'top' }));
+      return horeca.map((h) => {
+        const label = (h.n ? escapeHtml(h.n) + ' · ' : '') + horecaLabel(h.t);
+        return L.marker([h.lat, h.lng], {
+          icon: L.divIcon({
+            className: '', html: `<div class="horeca-pin" title="${escapeHtml(h.n)}">${horecaEmoji(h.t)}</div>`,
+            iconSize: [24, 24], iconAnchor: [12, 12],
+          }),
+          keyboard: false,
+        })
+          .bindTooltip(label, { direction: 'top' })
+          // Ook aantikbaar (tooltips tonen niet bij een tik op een aanraakscherm):
+          // een tik opent een popup met naam + type.
+          .bindPopup(`<div class="wp-popup">☕ ${label}</div>`);
+      });
     },
 
     // Beschikbare overlays voor dit beeld onthouden; welke er getoond worden hangt
