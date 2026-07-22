@@ -49,13 +49,13 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
 - **Nieuwe wandeling — routes in de buurt** (🧭, geen Komoot nodig): een **download-paneel**
   met álle bewegwijzerde wandelroutes rond je — ook in **Duitsland** (lokale lussen én
   regionale Wanderwege). Bovenaan zie je kort en overzichtelijk hoeveel routes er al
-  gedownload zijn (bv. *"3 van 5 gedownload"*), daaronder een **lijst** met per route de
-  kleur van de pijltjes, de naam en de **afstand**, en een statusje (wachten → laden → ✓).
-  Ben je te ver uitgezoomd, dan vraagt de app om **in te zoomen** (met een knop) zodat het
-  ophalen vlot gaat. Routes komen **dichtste-bij-eerst, één voor één** binnen en verschijnen
-  meteen op de kaart; je hoeft dus niet op alles te wachten — kies er gewoon één zodra ze
-  klaar is (via de kaart óf de lijst). Duurt eentje te lang, tik ze dan in de lijst aan om
-  ze met voorrang op te halen. Routes komen altijd **volledig** binnen (raakt een traject
+  gedownload zijn (bv. *"3 van 5 gedownload"*). Ben je te ver uitgezoomd, dan vraagt de app
+  om **in te zoomen** (met een knop) zodat het ophalen vlot gaat. De routes worden in **één
+  vlotte, betrouwbare aanvraag** opgehaald (een streek met tientallen routes komt in enkele
+  seconden binnen) en verschijnen samen op de kaart; je kiest er gewoon één door hem aan te
+  tikken. Een korte **lijst** toont enkel de routes die nog aan het laden zijn — zodra een
+  route op de kaart staat, kies je hem daar. Al eerder bezochte gebieden komen meteen uit de
+  offline-opslag (geen nieuwe download). Routes komen altijd **volledig** binnen (raakt een traject
   ook maar met één hoekje je scherm, dan krijg je heel de route). Tik ◎ om te zien op welke
   routes je staat, kies er één en tik **Volg** — dan wordt die ingeladen en vanaf dan
   volledig offline. Tik op een **leeg stuk kaart** om de keuze weer los te laten. Het
@@ -125,7 +125,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 391 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 395 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),

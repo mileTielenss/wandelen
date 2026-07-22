@@ -168,7 +168,7 @@ async function open(page) {
   // Hedged-mirror stagger sterk verlagen: de foutpaden hoeven in de test niet
   // telkens 3,5–7 s op de echte staggers te wachten. De hedge-LOGICA blijft
   // getest (mirror 2 start ná mirror 1), enkel véél sneller.
-  await page.evaluate(() => Overpass._test.setHedgeMs(120));
+  await page.evaluate(() => { Overpass._test.setHedgeMs(120); Overpass._test.setRetryMs(60); });
 }
 
 // Markeer de default route als al-gecachet zodat de auto-tegeldownload niet stoort.
@@ -1465,25 +1465,7 @@ await scenario('S12c progressief laden — takken', {
     let geomN = 0;
     Overpass.fetchRoutesByIds = async () => { geomN++; if (geomN === 1) App._exploreActive = false; return []; };
     await App._exploreFetch(true);
-    ok('stale tijdens brokje → stop', true);
-
-    // 7b) Pool levert niets → gecombineerde fallback vult de kaart alsnog (recovery
-    //     van de "kon routes niet laden"-situatie: de losse pool-calls faalden,
-    //     één gebundelde aanvraag lukt wél).
-    prep();
-    Overpass.fetchRouteList = async () => [{ id: 42, name: 'R', ref: 'R', center: { lat: 51.312, lng: 5.405 } }];
-    let fbN = 0;
-    Overpass.fetchRoutesByIds = async () => (++fbN === 1 ? [] : [{ ...oneRoute }]);
-    await App._exploreFetch(true);
-    ok('pool leeg → gecombineerde fallback vult de kaart', App._exploreRoutes.length === 1);
-
-    // 7c) Pool leeg, fallback loopt en dan verlaat de gebruiker verkennen → stop.
-    prep();
-    Overpass.fetchRouteList = async () => [{ id: 42, name: 'R', center: { lat: 51.312, lng: 5.405 } }];
-    let fb2 = 0;
-    Overpass.fetchRoutesByIds = async () => { if (++fb2 === 2) App._exploreActive = false; return []; };
-    await App._exploreFetch(true);
-    ok('fallback + stale → stop', true);
+    ok('stale tijdens de geometrie-query → stop', true);
 
     // 8) Catch-terugval met MEERDERE opgeslagen routes (meervoud, offline cache).
     prep();
@@ -1603,6 +1585,44 @@ await scenario('S12c progressief laden — takken', {
     App._renderExploreList([{ rid: 'osm-9', id: 9, name: 'C', status: 'klaar' }]);
     ok('reeds-klare route komt niet in de lijst',
       document.querySelectorAll('.explore-item').length === 0 && document.getElementById('explore-list').hidden);
+
+    // 15) Betrouwbaarheid van postQuery: Overpass geeft bij een time-out/limiet HTTP
+    //     200 mét een 'remark' en lege elements — dat is een FOUT, geen "niks gevonden".
+    ok('isOverpassError: remark + leeg = fout',
+      Overpass._test.isOverpassError({ remark: 'runtime error: Query timed out', elements: [] }));
+    ok('isOverpassError: geldige data = geen fout', !Overpass._test.isOverpassError({ elements: [{}] }));
+    ok('isOverpassError: remark mét data = geen fout',
+      !Overpass._test.isOverpassError({ remark: 'timed out', elements: [{}] }));
+    ok('isOverpassError: onbekende remark = geen fout',
+      !Overpass._test.isOverpassError({ remark: 'iets anders', elements: [] }));
+
+    // Alle mirrors geven een remark-antwoord → als fout behandeld → na één retry
+    // "Overpass niet bereikbaar" (i.p.v. stil 0 routes tonen).
+    {
+      const of = window.fetch;
+      window.fetch = async () => new Response(
+        JSON.stringify({ remark: 'runtime error: Query timed out', elements: [] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } });
+      Overpass._test.setHedgeMs(0); Overpass._test.setRetryMs(20);
+      let msg = '';
+      try { await Overpass._test.postQuery('[out:json];out;', 500); } catch (e) { msg = e.message; }
+      window.fetch = of; Overpass._test.setHedgeMs(120); Overpass._test.setRetryMs(60);
+      ok('remark-antwoord → fout + retry → onbereikbaar', /niet bereikbaar/.test(msg));
+    }
+
+    // Abort tijdens de retry-pauze → nette 'afgebroken' (geen tweede ronde meer).
+    {
+      const of = window.fetch;
+      window.fetch = async () => { throw new Error('down'); };
+      Overpass._test.setHedgeMs(0); Overpass._test.setRetryMs(300);
+      const ctrl = new AbortController();
+      const p = Overpass._test.postQuery('[out:json];out;', 500, ctrl.signal);
+      setTimeout(() => ctrl.abort(), 80);
+      let msg = '';
+      try { await p; } catch (e) { msg = e.message; }
+      window.fetch = of; Overpass._test.setHedgeMs(120); Overpass._test.setRetryMs(60);
+      ok('abort tijdens retry-pauze → afgebroken', msg === 'afgebroken');
+    }
 
     // 6) Lagen-sheet met nog lege tellingen (nc/hc null) → geen "(… )".
     MapView._nodeCount = null; MapView._horecaCount = null;

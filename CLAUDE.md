@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (391 asserts) + coverage-rapport
+npm install && npm test         # testsuite (395 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -35,7 +35,7 @@ IIFE's die globals registreren. `index.html` laadt de scripts in deze volgorde
 | `js/komoot.js` | `Komoot` | Komoot-URL parsen, tour ophalen, naar routeformaat |
 | `js/gpx.js` | `GPX` | GPX (URL of bestand) parsen: trk → rte → wpt, naar routeformaat |
 | `js/kml.js` | `KML` | KML / Google My Maps parsen: LineString → route, Point → genummerde punten (bv. bordjes). Bron voor routes die enkel als "digitaal routeplan" bestaan |
-| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Progressief laden: lijst (`fetchRouteList`, `out tags center` → naam+afstand+centrum) → geometrie in brokken (`fetchRoutesByIds`, dichtste eerst, 6 per aanvraag + gecombineerd vangnet) → overlays (`fetchOverlaysArea`); hedged mirrors + extern abort-`signal` |
+| `js/overpass.js` | `Overpass` | OSM/Overpass: knooppunten, horeca, wandellussen (lwn/rwn-relaties). Laden in 2 lichte fasen: lijst (`fetchRouteList`, `out tags center` → naam+afstand+centrum) → geometrie van álle nieuwe routes in **één** query (`fetchRoutesByIds`, `rel(id:…);out geom`) → overlays (`fetchOverlaysArea`). Betrouwbaar `postQuery`: hedged mirrors (700 ms) + **retry** + **remark-detectie** (Overpass-time-out = fout, geen "0 routes") + extern abort-`signal` |
 | `js/tiles.js` | `Tiles` | Kaartlagen-catalogus, tegelplanning (corridor/bbox), downloads naar Cache Storage |
 | `js/map.js` | `MapView`, `Geo` | Leaflet-kaart, route/overlays tekenen, locatie (1×/tracking), verken-laag, geometrie |
 | `js/app.js` | `App` | Schermen, flows, statuslampjes, auto-caching, voorkeuren, event-bedrading |
@@ -86,13 +86,13 @@ dan verdwijnt hij samen met de inklap-knop. De lijst is **inklapbaar** (`#explor
    ids + naam/ref/afstand/kleur (`Overpass.listItem`) + **centrum** per route. Meteen de
    volledige lijst tonen; gesorteerd op **afstand tot het midden van de view** (dichtste eerst).
 2. **Fase 2 — geometrie** (`Overpass.fetchRoutesByIds` → `geomQuery`, `rel(id:…);out geom qt`):
-   in **brokken van 6 routes per aanvraag** (`BATCH`), dichtste eerst, met een concurrency-pool
-   van **2** (`_runPool`); elk brokje verschijnt meteen op de kaart (`MapView.addExploreRoutes`)
-   en valt uit de lijst (klaar → op de kaart). **Waarom brokken i.p.v. 1-per-aanvraag:** één-route-per-call
-   vuurde te veel Overpass-calls tegelijk af → rate limits (429) → *álle* geometrie faalde en de
-   gebruiker zag wel de lijst maar geen lijnen ("kon routes niet laden"). Brokken + pool 2 =
-   veel minder calls. **Vangnet:** levert de hele pool niets op, dan volgt nog **één gecombineerde
-   aanvraag** voor de dichtste ~12 routes (één call = kleinste kans op een limiet) vóór we opgeven.
+   álle nieuwe routes in **één gecombineerde query** (niet meer in brokjes/pool). **Waarom:**
+   de oude brokjes-aanpak (6 per aanvraag, pool 2) vuurde tien+ Overpass-calls per zoekactie af →
+   rate limits → *álle* geometrie faalde terwijl de lijst wél binnenkwam ("kon routes niet laden").
+   Eén aanvraag = **één** kans op een limiet, en is amper trager: een gebied met tientallen routes
+   komt in ~2–3 s en ~1 MB volledig binnen (gemeten). De routes verschijnen samen op de kaart
+   (`MapView.addExploreRoutes`) en vallen uit de lijst (klaar → op de kaart). Faalt de query, dan
+   vangt `postQuery` dat op met een hedged mirror + één retry (zie Externe diensten).
    **Cache-hergebruik:** vóór fase 2 splitst `_cachedRouteById()` de lijst in reeds-opgeslagen
    routes (id in een `region-*`/`explore-cache`, mét geometrie) en nieuwe. Opgeslagen routes worden
    **meteen uit de opslag getekend en NIET opnieuw opgehaald** — óók niet bij "Zoek hier" (force);
@@ -137,7 +137,7 @@ sleutel = volledige tegel-URL).
 | KML-URL of Google My Maps-link (`KML.importFromUrl` / `KML.parse`) | route-import | Google My Maps-viewerlink → publieke KML-export (`/maps/d/kml?mid=…&forcekml=1`); zelfde proxy-fallback (Google stuurt geen CORS). `LineString` → route, `Point`-placemarks → `waypoints` met `ref`=bordnummer + `name`. Waypoints zijn route-eigen en worden **altijd** getekend (`MapView._setWaypoints`, los van de knooppunten-schakelaar — het zijn géén knooppunten). Zet `overlaysFetched:true` als er eigen punten zijn (geen OSM-overlays ophalen). Zo werkt de **Nutteloze Borden**-route van Genk (69 bordjes, geen GPX) toch |
 | Overpass (kumi.systems → overpass-api.de → private.coffee) | knooppunten, horeca, wandelroutes (lwn + rwn zonder `network:type=node_network`, plus routes zonder network-tag — dekt ook Duitse Wanderwege; geometrie VOLLEDIG met `out geom` — bewuste keuze: wie een route volgt wil heel het
 traject, en de bbox-klem begrenst het aantal relaties; afstand bij voorkeur uit de
-`distance`-tag). **Progressief**: eerst een lichte lijst-query (`out tags`), dan de geometrie per brokje (`rel(id:…);out geom`) | **Hedged**: alle mirrors parallel gestart met 3,5 s tussenstart, eerste antwoord wint. Query-timeout 20–25 s, client-timeout 12–16 s. Extern `signal` breekt alle pogingen af. Zoekgebied altijd klemmen (±0.16°) |
+`distance`-tag). **2 fasen**: eerst een lichte lijst-query (`out tags`), dan álle nieuwe geometrie in één query (`rel(id:…);out geom`) | **Betrouwbaar `postQuery`**: mirrors hedged met 700 ms tussenstart (dode/trage eerste mirror snel overslaan), eerste geldige antwoord wint; falen álle mirrors → na `RETRY_MS` nog één volledige ronde. **Remark-detectie**: een Overpass-time-out/limiet komt als HTTP 200 mét `remark` + lege `elements` — dat behandelen we als fout (`isOverpassError`), niet als "0 routes". Server-timeout 30–50 s, client-timeout 15–25 s. Extern `signal` breekt alles af. Zoekgebied altijd klemmen (±0.16°) |
 | Carto Voyager `@2x` (standaard), Esri World Imagery, OpenTopoMap | kaarttegels | Vaste subdomeinen (geen `{s}`) zodat cache-URL's deterministisch zijn. **Fair use**: nooit bulk (heel België ≈ 20 GB — bewust niet ondersteund; corridor/regio volstaat) |
 
 ## Ontwerpprincipes (niet breken)
@@ -173,10 +173,11 @@ met `node tests/refresh-fixture.mjs` na elke wijziging aan `areaQuery` of de par
 
 **Snelheid (hou de run < ~90 s).** De volledige suite draait sequentieel; elk
 scenario print zijn eigen tijd (`⏱ …`) zodat een uitschieter meteen zichtbaar is.
-De grootste valkuil is de **hedged-mirror stagger** (`HEDGE_MS`, prod 3,5 s): een
-foutpad-test zou anders bij élke query seconden op die staggers wachten. `open()`
-zet daarom `Overpass._test.setHedgeMs(120)` — de hedge-**logica** blijft getest
-(mirror 2 start ná mirror 1), enkel véél sneller. Gebruik **geen vaste `sleep()`
+De grootste valkuil is de **hedged-mirror stagger** (`HEDGE_MS`, prod 700 ms) plus de
+**retry-pauze** (`RETRY_MS`, prod 1200 ms): een foutpad-test zou anders bij élke query
+seconden wachten. `open()` zet daarom `Overpass._test.setHedgeMs(120)` én `setRetryMs(60)`
+— de hedge/retry-**logica** blijft getest (mirror 2 start ná mirror 1; retry ná een
+mislukte ronde), enkel véél sneller. Gebruik **geen vaste `sleep()`
 op iets waar je op een conditie kan wachten** (`waitForFunction`/`waitForSelector`);
 kunstmatige mock-vertragingen kort houden. Time-outs in traag-ladende scenario's (S18)
 staan bewust ruim (25 s) — die kosten niets als het snel gaat en voorkomen flakes

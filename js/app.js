@@ -10,7 +10,7 @@
   //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen.
-  const APP_VERSION = '6';
+  const APP_VERSION = '7';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -603,13 +603,13 @@
           rid: 'osm-' + l.id, id: l.id, name: l.name, ref: l.ref, colour: l.colour, distance: l.distance, status: 'wachten',
         }));
 
-        // Fase 2 — geometrie in kleine BROKKEN (meerdere routes per aanvraag),
-        // dichtste eerst, met een pool van 2. Eén-route-per-aanvraag vuurde te veel
-        // Overpass-calls tegelijk af → rate limits → álle geometrie faalde ("kon
-        // routes niet laden"), ook al kwam de lijst wél binnen. Per brokje
-        // verschijnen nu meerdere routes samen op de kaart.
+        // Fase 2 — geometrie van ALLE nieuwe routes in ÉÉN gecombineerde query
+        // (Overpass.fetchRoutesByIds met alle ids). Bewust niet meer opgesplitst in
+        // brokjes met een pool: één aanvraag is véél betrouwbaarder (één kans op een
+        // rate limit i.p.v. tien → geen "kon routes niet laden" meer terwijl de lijst
+        // wél binnenkwam) en amper trager (~2–3 s voor tientallen routes). Al-gecachede
+        // routes tekenen we meteen uit de opslag en halen we NIET opnieuw op.
         const all = [];
-        const BATCH = 6;
         const drawPart = (grp, part) => {
           const got = new Set(part.map((r) => r.id));
           for (const it of grp) this._setExploreItemStatus(it.rid, got.has(it.rid) ? 'klaar' : 'wachten');
@@ -621,9 +621,6 @@
           }
         };
 
-        // Al eerder opgehaalde routes NIET opnieuw downloaden — teken ze meteen uit
-        // de opslag en haal enkel de nog-onbekende via Overpass. (Verwijder je de
-        // route/regio, dan is hij weg uit de cache en wordt hij wél opnieuw gehaald.)
         const cachedById = this._cachedRouteById();
         const cachedItems = [], cachedRoutes = [], fresh = [];
         for (const it of items) {
@@ -640,24 +637,11 @@
         }
         if (cachedRoutes.length) drawPart(cachedItems, cachedRoutes);
 
-        const batches = [];
-        for (let k = 0; k < fresh.length; k += BATCH) batches.push(fresh.slice(k, k + BATCH));
-        await this._runPool(batches, 2, async (grp) => {
-          for (const it of grp) this._setExploreItemStatus(it.rid, 'laden');
-          let part;
-          try { part = await Overpass.fetchRoutesByIds(grp.map((it) => it.id), ctrl.signal); }
-          catch (_) { for (const it of grp) this._setExploreItemStatus(it.rid, 'wachten'); return; }
+        if (fresh.length) {
+          for (const it of fresh) this._setExploreItemStatus(it.rid, 'laden');
+          const part = await Overpass.fetchRoutesByIds(fresh.map((it) => it.id), ctrl.signal);
           if (stale()) return;
-          drawPart(grp, part);
-        });
-        if (stale()) return;
-        // Nog niets binnen (bv. de pool-aanvragen liepen op een rate limit)? Eén
-        // laatste, gecombineerde poging voor de dichtste nog-onbekende routes — één
-        // aanvraag = de kleinste kans op een limiet — vóór we opgeven.
-        if (!all.length && fresh.length) {
-          const grp = fresh.slice(0, 12);
-          drawPart(grp, await Overpass.fetchRoutesByIds(grp.map((it) => it.id), ctrl.signal));
-          if (stale()) return;
+          drawPart(fresh, part);
         }
         if (!all.length) throw new Error('geen geometrie');
 
@@ -692,13 +676,6 @@
       } finally {
         if (mySeq === this._exploreSeq) { $('explore-search').disabled = false; $('explore-spin').hidden = true; }
       }
-    },
-
-    // Kleine concurrency-pool: draai `fn` over `items` met max `conc` tegelijk.
-    async _runPool(items, conc, fn) {
-      let i = 0;
-      const worker = async () => { while (i < items.length) await fn(items[i++]); };
-      await Promise.all(Array.from({ length: Math.min(conc, items.length) }, worker));
     },
 
     _onExplorePick(rt) {
