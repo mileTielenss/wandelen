@@ -7,7 +7,7 @@
 //   3. APP_CACHE (hieronder)   → een NIEUWE naam die verse app-shell forceert. Aparte
 //      teller: hoeft NIET gelijk te zijn aan N (staat daarom op v7 bij versie 3), moet
 //      enkel wijzigen t.o.v. de vorige.
-const APP_CACHE = 'wandelen-app-v10';
+const APP_CACHE = 'wandelen-app-v11';
 const TILE_CACHE = 'wandelen-tiles-v1';
 // Tegelbronnen (host-achtervoegsels) die we offline cachen.
 const TILE_DOMAINS = ['basemaps.cartocdn.com', 'arcgisonline.com', 'tile.opentopomap.org', 'tile.openstreetmap.org'];

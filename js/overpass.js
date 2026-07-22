@@ -13,12 +13,13 @@
 
   const HORECA = 'cafe|restaurant|bar|pub|fast_food|biergarten|ice_cream';
 
-  // Tussenstart tussen de hedged mirrors. Productie: 2 s — kort genoeg dat een trage
-  // of platliggende eerste mirror (kumi.systems lag er tijdens metingen weleens uit)
-  // snel wordt overgeslagen, lang genoeg dat een gezonde eerste mirror meestal wint
-  // vóór we een tweede belasten. Tests verlagen dit nog verder zodat de foutpaden
-  // niet telkens seconden op deze staggers wachten.
-  let HEDGE_MS = 2000;
+  // Tussenstart tussen de hedged mirrors: kort (700 ms) zodat een trage of
+  // platliggende eerste mirror (kumi.systems lag er tijdens metingen weleens uit)
+  // snel wordt overgeslagen, maar een gezonde eerste mirror meestal nog wint vóór we
+  // een tweede belasten. Falen ÁLLE mirrors, dan volgt na RETRY_MS nog één volledige
+  // poging — Overpass is vaak maar heel even overbelast. Tests verlagen beide.
+  let HEDGE_MS = 700;
+  let RETRY_MS = 1200;
 
   function buildQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
@@ -40,11 +41,19 @@
   /** Snelle query: alle mirrors "hedged" parallel (2e start na 3,5s, 3e na 7s);
       het eerste geldige antwoord wint en de rest wordt afgebroken. Een externe
       `signal` breekt alle pogingen af (bv. bij een nieuwe zoekactie). */
-  async function postQuery(q, timeoutMs, signal) {
-    timeoutMs = timeoutMs || 14000;
-    if (signal && signal.aborted) throw new Error('afgebroken');
+  // Overpass geeft bij een time-out of overbelasting HTTP 200 mét een `remark` en
+  // (bijna altijd) lege `elements`. Dat is een MISLUKKING, geen "niets gevonden" —
+  // vroeger toonde de app daardoor "geen routes" terwijl er gewoon een limiet was.
+  function isOverpassError(data) {
+    return !!(data && data.remark && (!data.elements || !data.elements.length) &&
+      /timed out|out of memory|rate_limited|too many|please try again/i.test(data.remark));
+  }
+
+  // Eén ronde: alle mirrors "hedged" (2e start na HEDGE_MS, enz.); eerste geldige wint.
+  async function raceMirrors(q, timeoutMs, signal) {
     const stop = new AbortController();
-    if (signal) signal.addEventListener('abort', () => stop.abort(), { once: true });
+    const onOuter = () => stop.abort();
+    if (signal) signal.addEventListener('abort', onOuter, { once: true });
     const attempts = ENDPOINTS.map((ep, i) => (async () => {
       if (i > 0) {
         await delay(i * HEDGE_MS, stop.signal);
@@ -62,19 +71,38 @@
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        return await res.json();
+        const data = await res.json();
+        if (isOverpassError(data)) throw new Error('overpass: ' + data.remark);
+        return data;
       } finally {
         clearTimeout(timer);
         stop.signal.removeEventListener('abort', onStop);
       }
     })());
     try {
-      const winner = await Promise.any(attempts);
+      return await Promise.any(attempts);
+    } finally {
       stop.abort();
-      return winner;
+      if (signal) signal.removeEventListener('abort', onOuter);
+    }
+  }
+
+  // Alle mirrors één ronde racen; faalt élke mirror, dan na een korte pauze nog één
+  // ronde (Overpass is vaak maar kort overbelast — een tweede poging lukt meestal).
+  async function postQuery(q, timeoutMs, signal) {
+    timeoutMs = timeoutMs || 16000;
+    if (signal && signal.aborted) throw new Error('afgebroken');
+    try {
+      return await raceMirrors(q, timeoutMs, signal);
     } catch (_) {
-      stop.abort();
-      throw new Error(signal && signal.aborted ? 'afgebroken' : 'Overpass niet bereikbaar');
+      if (signal && signal.aborted) throw new Error('afgebroken');
+      await delay(RETRY_MS, signal);
+      if (signal && signal.aborted) throw new Error('afgebroken');
+      try {
+        return await raceMirrors(q, timeoutMs, signal);
+      } catch (_2) {
+        throw new Error('Overpass niet bereikbaar');
+      }
     }
   }
 
@@ -241,7 +269,7 @@
   // afstand tot het midden van het beeld. Fase 2 haalt de geometrie per route op.
   function listQuery(b) {
     const bbox = `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
-    return `[out:json][timeout:20];(${ROUTE_FILTER(bbox)});out tags center qt;`;
+    return `[out:json][timeout:30];(${ROUTE_FILTER(bbox)});out tags center qt;`;
   }
   function listItem(e) {
     const t = e.tags || {};
@@ -255,29 +283,31 @@
     };
   }
   async function fetchRouteList(bounds, signal) {
-    const data = await postQuery(listQuery(bounds), 12000, signal);
+    const data = await postQuery(listQuery(bounds), 15000, signal);
     return (data.elements || []).filter((e) => e.type === 'relation').map(listItem);
   }
 
-  // Fase 2: geometrie van een handvol relaties tegelijk (op id), zodat elk
-  // brokje apart en snel binnenkomt en getekend kan worden.
+  // Fase 2: geometrie van ALLE gevraagde relaties in ÉÉN query (op id). Bewust niet
+  // meer opgesplitst in brokjes: één gecombineerde aanvraag is véél betrouwbaarder
+  // (één kans op een rate limit i.p.v. tien) en amper trager — een gebied met tientallen
+  // routes komt in ~2–3 s en ~1 MB binnen. Ruime server-time-out want dit is de zware call.
   function geomQuery(ids) {
-    return `[out:json][timeout:25];rel(id:${ids.join(',')});out geom qt;`;
+    return `[out:json][timeout:50];rel(id:${ids.join(',')});out geom qt;`;
   }
   async function fetchRoutesByIds(ids, signal) {
     if (!ids.length) return [];
-    return parseRoutes(await postQuery(geomQuery(ids), 16000, signal));
+    return parseRoutes(await postQuery(geomQuery(ids), 25000, signal));
   }
 
   // Knooppunten + horeca apart (out center) — licht, en buiten België de enige
   // bron. In verken-modus blokkeert dit het tekenen van routes niet.
   async function fetchOverlaysArea(bounds, signal) {
     const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
-    const q = `[out:json][timeout:20];(` +
+    const q = `[out:json][timeout:30];(` +
       `node["rwn_ref"](${bbox});node["lwn_ref"](${bbox});` +
       `nwr["amenity"~"^(${HORECA})$"](${bbox});node["shop"="bakery"](${bbox});` +
       `);out center qt;`;
-    return parse(await postQuery(q, 12000, signal));
+    return parse(await postQuery(q, 15000, signal));
   }
 
   function boundsFromCenter(lat, lng, radiusM) {
@@ -302,6 +332,7 @@
     fetchOverlays, fetchRouteList, fetchRoutesByIds, fetchOverlaysArea,
     boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, listItem, geomQuery, setHedgeMs: (ms) => { HEDGE_MS = ms; } },
+    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, listItem, geomQuery, isOverpassError,
+      setHedgeMs: (ms) => { HEDGE_MS = ms; }, setRetryMs: (ms) => { RETRY_MS = ms; } },
   };
 })(window);
