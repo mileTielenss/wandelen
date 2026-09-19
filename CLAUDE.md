@@ -74,11 +74,15 @@ Knooppunten + horeca + routes worden in verken-modus als vaste overlays getoond
 **Download-paneel + progressief laden** (i.p.v. één trage gecombineerde aanvraag):
 het verken-paneel (`#explore-bar`) toont een **teller** (`#explore-count`, bv. "3 van 5
 gedownload"), een **routelijst** (`#explore-list`, `_renderExploreList`) en — bij een te grote
-view — een **zoom-in-hint** (`#explore-zoomhint` + `App.exploreZoomIn`). De lijst toont **enkel
-routes die nog DOWNLOADEN** (status · wachten / ↻ laden); zodra een route klaar is en op de kaart
-staat, valt hij uit de lijst (`_setExploreItemStatus('klaar')` verwijdert het item, `_renderExploreList`
-filtert `klaar` weg) — al-geladen routes kies je op de kaart, niet in de lijst. Is de lijst leeg,
-dan verdwijnt hij samen met de inklap-knop. De lijst is **inklapbaar** (`#explore-collapse` →
+view — een **zoom-in-hint** (`#explore-zoomhint` + `App.exploreZoomIn`). De lijst toont **álle
+gevonden routes** met **naam + afstand + status** (· wachten / ↻ laden / ✓ geladen), zodat je er
+één kan **kiezen uit de lijst** (i.p.v. op de kaart te moeten mikken — daar zie je de afstand niet).
+Een tik op een route selecteert hem (loaded → meteen; nog niet → `_onExploreItemTap` haalt hem met
+voorrang op); de route **blijft** in de lijst (kiezen ≠ verwijderen). Afstand komt uit fase 1 (tag)
+en wordt bij het laden bijgewerkt naar de gemeten waarde (`_setExploreItemDistance`). De afstand
+staat in een **eigen kolom** (list én `#explore-selname` → `.sel-name`/`.sel-dist`) zodat een lange
+naam de afstand niet wegduwt. Is de lijst leeg, dan verdwijnt hij samen met de inklap-knop. De lijst
+is **inklapbaar** (`#explore-collapse` →
 `App.toggleExploreList`, ▾/▸) zodat een lange lijst de kaart niet bedekt. `_exploreFetch` werkt zo:
 0. **Zoom-poort:** is de view te groot (> ±0.16°), dan géén trage query maar de zoom-in-hint
    (kleiner gebied = snellere, betrouwbaardere Overpass-call).
@@ -91,15 +95,15 @@ dan verdwijnt hij samen met de inklap-knop. De lijst is **inklapbaar** (`#explor
    rate limits → *álle* geometrie faalde terwijl de lijst wél binnenkwam ("kon routes niet laden").
    Eén aanvraag = **één** kans op een limiet, en is amper trager: een gebied met tientallen routes
    komt in ~2–3 s en ~1 MB volledig binnen (gemeten). De routes verschijnen samen op de kaart
-   (`MapView.addExploreRoutes`) en vallen uit de lijst (klaar → op de kaart). Faalt de query, dan
+   (`MapView.addExploreRoutes`) en worden in de lijst als `✓` gemarkeerd (geladen, selecteerbaar).
+   Faalt de query, dan
    vangt `postQuery` dat op met een hedged mirror + één retry (zie Externe diensten).
    **Cache-hergebruik:** vóór fase 2 splitst `_cachedRouteById()` de lijst in reeds-opgeslagen
    routes (id in een `region-*`/`explore-cache`, mét geometrie) en nieuwe. Opgeslagen routes worden
    **meteen uit de opslag getekend en NIET opnieuw opgehaald** — óók niet bij "Zoek hier" (force);
    enkel de nog-onbekende gaan naar Overpass. (Verdwijnt een route uit de cache, dan wordt hij weer
-   gehaald.) Zo staan gecachede routes meteen op de kaart en verschijnen ze **niet** in de
-   downloadlijst. Een tik op een nog-ladend lijst-item (`_onExploreItemTap`) haalt díe route
-   meteen op (voorrang); al-geladen routes kies je op de kaart.
+   gehaald.) Gecachede routes staan meteen op de kaart én in de lijst (als `✓`), samen met de
+   nieuwe. Kiezen doe je in de lijst of op de kaart.
 3. **Overlays** (`Overpass.fetchOverlaysArea` → `out center qt`): parallel gestart,
    blokkeert het tekenen van routes niet.
 

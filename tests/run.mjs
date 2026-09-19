@@ -616,10 +616,18 @@ await scenario('S7 verkennen & volgen', {
   t('routes gedownload (teller)', (await txt(page, '#explore-count')).match(/\d+ route/) !== null);
   const nLayers = await page.evaluate(() => Object.keys(MapView._exploreLayers).length);
   t('routes getekend (canvas)', nLayers > 3 && await page.evaluate(() => !!document.querySelector('#map canvas')), String(nLayers));
-  // De lijst toont enkel wat nog DOWNLOADT; na het laden staat alles op de kaart, dus
-  // is de lijst leeg (het lijst-/inklapgedrag zelf staat deterministisch in S12c).
-  t('lijst leeg na laden — routes staan op de kaart',
-    (await page.$$('.explore-item')).length === 0 && await page.isHidden('#explore-list'));
+  // De lijst BLIJFT staan met álle routes + afstand, zodat je er één kan KIEZEN
+  // (routes vallen niet meer weg na het laden). Elke geladen route toont ✓ + afstand.
+  const listInfo = await page.evaluate(() => {
+    const items = [...document.querySelectorAll('.explore-item')];
+    return {
+      n: items.length,
+      allDone: items.length > 0 && items.every((el) => el.querySelector('.x-state').textContent === '✓'),
+      withKm: items.filter((el) => /km/.test(el.querySelector('.x-dist').textContent)).length,
+    };
+  });
+  t('lijst blijft staan met alle routes', listInfo.n > 3 && await page.isVisible('#explore-list'), JSON.stringify(listInfo));
+  t('elke route toont ✓ (geladen) + afstand', listInfo.allDone && listInfo.withKm > 0, JSON.stringify(listInfo));
 
   // brede raakzone aanwezig (onzichtbare dikke lijnen onder elke route)
   const hasHit = await page.evaluate(() => {
@@ -639,37 +647,27 @@ await scenario('S7 verkennen & volgen', {
   });
   await sleep(300);
   t('tik naast route selecteert (tolerantie)', await page.evaluate(() => MapView.selectedExploreId !== null));
-  t('keuze toont naam + afstand', (await txt(page, '#explore-selname')).includes('km'));
+  t('keuze: naam + afstand apart zichtbaar (afstand valt niet weg)', await page.evaluate(() =>
+    !!document.querySelector('#explore-selname .sel-name') &&
+    /km/.test((document.querySelector('#explore-selname .sel-dist') || {}).textContent || '')));
   t('Volg-knop actief', await page.$eval('#explore-follow', (el) => !el.disabled));
   await page.evaluate(() => { App.onExploreDeselect(); });
 
-  // Lijst-interacties met échte muisklikken (na het gewone laden is de lijst leeg,
-  // dus zetten we bewust een nog-ladende lijst klaar): inklap-knop, markeren, en een
-  // tik op een nog-ladende route die hem met voorrang ophaalt.
-  await page.evaluate(() => {
-    App._exploreActive = true;
-    App._renderExploreList([{ rid: 'osm-777', id: 777, name: 'Bezig', ref: 'B', colour: '#dc2626', distance: 1234, status: 'wachten' }]);
-    App._highlightExploreItem('osm-777'); // markeer-lus over de lijst-items
-  });
-  t('ladend lijst-item toont afstand + markering', await page.evaluate(() =>
-    /1,2\s*km/.test(document.querySelector('[data-rid="osm-777"] .x-dist').textContent) &&
-    document.querySelector('[data-rid="osm-777"]').classList.contains('is-selected')));
+  // KIEZEN UIT DE LIJST met een échte muisklik: de route wordt geselecteerd, gemarkeerd,
+  // en BLIJFT in de lijst (kiezen = niet verwijderen). Dekt de "al geladen"-tak.
+  await page.click('.explore-item');
+  await sleep(150);
+  t('lijst-item aantikken kiest de route + blijft in de lijst', await page.evaluate(() =>
+    !!document.querySelector('.explore-item.is-selected') &&
+    !document.getElementById('explore-follow').disabled &&
+    document.querySelectorAll('.explore-item').length > 3));
+  // inklappen / weer uitklappen met échte kliks
   await page.click('#explore-collapse');
   t('inklappen verbergt de lijst', await page.isHidden('#explore-list') &&
     await page.evaluate(() => document.getElementById('explore-collapse').textContent === '▸'));
   await page.click('#explore-collapse');
   t('weer uitklappen', await page.isVisible('#explore-list'));
-  await page.evaluate(() => {
-    App._exploreAbort = new AbortController();
-    Overpass._test.stubGeom = Overpass.fetchRoutesByIds;
-    Overpass.fetchRoutesByIds = async () => [{ id: 'osm-777', name: 'Bezig', _col: '#dc2626', ref: 'B', distance: 1234,
-      segments: [[[51.312, 5.41], [51.313, 5.41]]], coords: [[51.312, 5.41]] }];
-  });
-  await page.click('.explore-item');
-  await sleep(200);
-  t('tik op ladende route → opgehaald, geselecteerd, uit lijst', await page.evaluate(() =>
-    !document.querySelector('[data-rid="osm-777"]') && !document.getElementById('explore-follow').disabled));
-  await page.evaluate(() => { Overpass.fetchRoutesByIds = Overpass._test.stubGeom; App.onExploreDeselect(); });
+  await page.evaluate(() => { App.onExploreDeselect(); });
 
   // 'Zoek hier' herlaadt progressief; daarna staan de routes er weer.
   await page.click('#explore-search');
@@ -1560,13 +1558,13 @@ await scenario('S12c progressief laden — takken', {
     Overpass.fetchRouteList = origList;
     Overpass.fetchRoutesByIds = origGeom;
 
-    // 14) De lijst toont enkel nog-ladende routes; klaar → eruit; leeg → verborgen;
-    //     een reeds-klare route komt er niet in (die staat op de kaart).
+    // 14) De lijst toont ÁLLE routes (kiezen uit een lijst); klaar-routes blijven staan
+    //     met ✓ + afstand, en inklappen/uitklappen werkt.
     App._renderExploreList([
-      { rid: 'osm-1', id: 1, name: 'A', colour: '#dc2626', status: 'wachten' },
-      { rid: 'osm-2', id: 2, name: 'B', colour: '#2563eb', status: 'laden' },
+      { rid: 'osm-1', id: 1, name: 'A', colour: '#dc2626', distance: 0, status: 'wachten' },
+      { rid: 'osm-2', id: 2, name: 'B', colour: '#2563eb', distance: 0, status: 'laden' },
     ]);
-    ok('lijst toont enkel ladende routes + inklap-knop',
+    ok('lijst toont alle routes + inklap-knop',
       document.querySelectorAll('.explore-item').length === 2 && !document.getElementById('explore-collapse').hidden);
     App.toggleExploreList();
     ok('inklappen (▸)', document.getElementById('explore-bar').classList.contains('is-collapsed') &&
@@ -1574,17 +1572,24 @@ await scenario('S12c progressief laden — takken', {
     App.toggleExploreList();
     ok('uitklappen (▾)', !document.getElementById('explore-bar').classList.contains('is-collapsed') &&
       document.getElementById('explore-collapse').textContent === '▾');
+    App._setExploreItemDistance('osm-1', 3400); // afstand bijwerken bij het laden
     App._setExploreItemStatus('osm-1', 'klaar');
-    ok('klaar-route verdwijnt uit de lijst',
-      document.querySelectorAll('.explore-item').length === 1 && document.querySelector('[data-rid="osm-1"]') === null);
-    App._setExploreItemStatus('osm-2', 'laden'); // niet-klaar-tak: badge bijwerken
-    ok('badge bijwerken zonder verwijderen', document.querySelector('[data-rid="osm-2"] .x-state.laden') !== null);
-    App._setExploreItemStatus('osm-2', 'klaar');
-    ok('lege lijst → lijst + inklap-knop verborgen',
-      document.getElementById('explore-list').hidden && document.getElementById('explore-collapse').hidden);
-    App._renderExploreList([{ rid: 'osm-9', id: 9, name: 'C', status: 'klaar' }]);
-    ok('reeds-klare route komt niet in de lijst',
-      document.querySelectorAll('.explore-item').length === 0 && document.getElementById('explore-list').hidden);
+    ok('klaar-route blijft in de lijst met ✓ + afstand',
+      document.querySelectorAll('.explore-item').length === 2 &&
+      document.querySelector('[data-rid="osm-1"] .x-state').textContent === '✓' &&
+      /3,4\s*km/.test(document.querySelector('[data-rid="osm-1"] .x-dist').textContent));
+    App._setExploreItemStatus('osm-2', 'laden');
+    ok('badge bijwerken (laden)', document.querySelector('[data-rid="osm-2"] .x-state.laden') !== null);
+    App._setExploreItemDistance('osm-nietbestaand', 999); // geen element → veilig
+    App._renderExploreList([{ rid: 'osm-9', id: 9, name: 'C', distance: 0, status: 'klaar' }]);
+    ok('reeds-klare route komt WEL in de lijst (selecteerbaar) met ✓',
+      document.querySelectorAll('.explore-item').length === 1 &&
+      document.querySelector('[data-rid="osm-9"] .x-state').textContent === '✓');
+    // Veilige no-ops: status/afstand voor een rid die niet in de lijst staat, en zonder lijst.
+    App._setExploreItemStatus('osm-weg', 'klaar'); // el niet gevonden → return
+    App._exploreItems = undefined;
+    App._setExploreItemDistance('osm-x', 5); // _exploreItems undefined → || []
+    ok('status/afstand zonder element is veilig', true);
 
     // 15) Betrouwbaarheid van postQuery: Overpass geeft bij een time-out/limiet HTTP
     //     200 mét een 'remark' en lege elements — dat is een FOUT, geen "niks gevonden".
