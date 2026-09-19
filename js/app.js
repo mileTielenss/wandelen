@@ -10,7 +10,7 @@
   //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen.
-  const APP_VERSION = '7';
+  const APP_VERSION = '8';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -404,9 +404,8 @@
     // ---------- Download-paneel: teller + routelijst ----------
     _setExploreCount(text) { $('explore-count').textContent = text; },
 
-    // Enkel nog-ladende routes staan in de lijst: '·' wacht, '↻' bezig. (Klaar =
-    // uit de lijst, dus geen klaar-icoon meer nodig.)
-    _stateIcon(s) { return s === 'laden' ? '↻' : '·'; },
+    // Status-icoon in de lijst: '·' wacht, '↻' bezig, '✓' klaar (selecteerbaar).
+    _stateIcon(s) { return s === 'klaar' ? '✓' : s === 'laden' ? '↻' : '·'; },
 
     // Lijst-item uit een reeds geladen route (status = klaar).
     _itemFromRoute(r) {
@@ -416,17 +415,17 @@
     _renderExploreList(items) {
       this._exploreItems = items;
       const box = $('explore-list');
-      // De lijst is enkel voor routes die nog DOWNLOADEN. Al-geladen routes (status
-      // 'klaar') staan op de kaart en kies je daar — die horen hier niet.
-      const pending = items.filter((it) => it.status !== 'klaar');
-      box.hidden = !pending.length;
+      // De lijst toont ÁLLE gevonden routes met hun afstand, zodat je er één kan
+      // kiezen (i.p.v. op de kaart te moeten mikken). Een ✓ betekent: geladen en
+      // selecteerbaar; · / ↻ = nog aan het downloaden.
+      box.hidden = !items.length;
       // Nieuwe lijst → altijd uitgeklapt tonen; de inklap-knop verschijnt zodra er
       // iets in de lijst staat (anders is er niets om in te klappen).
-      $('explore-collapse').hidden = !pending.length;
+      $('explore-collapse').hidden = !items.length;
       $('explore-bar').classList.remove('is-collapsed');
       $('explore-collapse').textContent = '▾';
       box.innerHTML = '';
-      for (const it of pending) {
+      for (const it of items) {
         const b = document.createElement('button');
         b.className = 'explore-item';
         b.dataset.rid = it.rid;
@@ -450,19 +449,20 @@
     _setExploreItemStatus(rid, status) {
       const it = (this._exploreItems || []).find((x) => x.rid === rid);
       if (it) it.status = status;
-      const box = $('explore-list');
-      const el = box.querySelector('[data-rid="' + rid + '"]');
+      const el = $('explore-list').querySelector('[data-rid="' + rid + '"]');
       if (!el) return;
-      // Klaar = op de kaart → uit de "nog aan het downloaden"-lijst halen. Wordt de
-      // lijst daardoor leeg, verberg 'm (en de inklap-knop): alles staat op de kaart.
-      if (status === 'klaar') {
-        el.remove();
-        if (!box.querySelector('.explore-item')) { box.hidden = true; $('explore-collapse').hidden = true; }
-        return;
-      }
       const st = el.querySelector('.x-state');
       st.textContent = this._stateIcon(status);
       st.className = 'x-state' + (status === 'laden' ? ' laden' : '');
+    },
+
+    // Afstand van een lijst-item bijwerken (de gemeten geometrie is nauwkeuriger dan
+    // de tag uit fase 1, en soms had fase 1 nog géén afstand).
+    _setExploreItemDistance(rid, m) {
+      const it = (this._exploreItems || []).find((x) => x.rid === rid);
+      if (it) it.distance = m;
+      const el = $('explore-list').querySelector('[data-rid="' + rid + '"] .x-dist');
+      if (el) el.textContent = m ? formatKm(m) : '';
     },
 
     _highlightExploreItem(rid) {
@@ -471,9 +471,11 @@
       }
     },
 
-    // Tik op een nog-ladende route in de lijst: haal díe nu op (voorrang). Al-geladen
-    // routes staan niet meer in de lijst (die kies je op de kaart).
+    // Tik op een route in de lijst: al geladen → meteen kiezen; nog niet → nu ophalen
+    // (voorrang) en dan kiezen.
     async _onExploreItemTap(rid) {
+      const loaded = this._exploreRoutes.find((r) => r.id === rid);
+      if (loaded) { this._onExplorePick(loaded); MapView.selectExplore(rid); return; }
       const it = (this._exploreItems || []).find((x) => x.rid === rid);
       if (!it) return;
       this._setExploreItemStatus(rid, 'laden');
@@ -483,6 +485,7 @@
         if (!part.length) { this._setExploreItemStatus(rid, 'wachten'); return; }
         this._exploreRoutes.push(part[0]);
         MapView.addExploreRoutes(part);
+        this._setExploreItemDistance(rid, part[0].distance);
         this._setExploreItemStatus(rid, 'klaar');
         this._onExplorePick(part[0]);
         MapView.selectExplore(rid);
@@ -611,8 +614,12 @@
         // routes tekenen we meteen uit de opslag en halen we NIET opnieuw op.
         const all = [];
         const drawPart = (grp, part) => {
-          const got = new Set(part.map((r) => r.id));
-          for (const it of grp) this._setExploreItemStatus(it.rid, got.has(it.rid) ? 'klaar' : 'wachten');
+          const byId = new Map(part.map((r) => [r.id, r]));
+          for (const it of grp) {
+            const r = byId.get(it.rid);
+            if (r && r.distance) this._setExploreItemDistance(it.rid, r.distance);
+            this._setExploreItemStatus(it.rid, r ? 'klaar' : 'wachten');
+          }
           if (!part.length) return;
           all.push(...part);
           if (!this._selectedExplore) {
@@ -630,9 +637,9 @@
 
         if (!this._selectedExplore) {
           MapView.startExploreRender(onPick);
-          // De lijst toont enkel de nog te downloaden routes; gecachede tekenen we
-          // meteen op de kaart (die staan dus niet in de lijst).
-          this._renderExploreList(fresh);
+          // De volledige lijst tonen (álle routes + afstand) zodat je er meteen één
+          // kan kiezen; per route markeren we 'klaar' zodra de geometrie binnen is.
+          this._renderExploreList(items);
           this._setExploreCount(`${items.length} route${items.length !== 1 ? 's' : ''} gevonden — ophalen…`);
         }
         if (cachedRoutes.length) drawPart(cachedItems, cachedRoutes);
@@ -682,9 +689,12 @@
       this._selectedExplore = rt;
       $('btn-recenter').hidden = false;
       $('explore-selected').hidden = false;
-      $('explore-selname').innerHTML = `<span class="swatch" style="background:${rt._col}"></span>` +
-        escapeHtmlApp(rt.name) + (rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : '') +
-        (rt.distance ? ' · ' + formatKm(rt.distance) : '');
+      // Naam (kort ingekort bij lange namen) + afstand als apart, altijd zichtbaar
+      // kolommetje — zo valt de afstand niet weg achter een lange routenaam.
+      $('explore-selname').innerHTML =
+        `<span class="swatch" style="background:${rt._col}"></span>` +
+        `<span class="sel-name">${escapeHtmlApp(rt.name)}${rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : ''}</span>` +
+        (rt.distance ? `<span class="sel-dist">${formatKm(rt.distance)}</span>` : '');
       $('explore-follow').disabled = false;
       this._highlightExploreItem(rt.id);
     },

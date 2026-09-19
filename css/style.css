@@ -149,7 +149,9 @@ button[disabled] { opacity: .55; pointer-events: none; }
 .explore-item .x-state.laden { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .explore-selected { display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
-.explore-selected #explore-selname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.explore-selected #explore-selname { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.explore-selected #explore-selname .sel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explore-selected #explore-selname .sel-dist { flex: none; color: #94a3b8; font-weight: 500; font-variant-numeric: tabular-nums; }
 .explore-selected #explore-selname .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.5); flex: none; }
 .explore-selected .primary { flex: none; }
 .explore-selected .primary:disabled { opacity: .5; }

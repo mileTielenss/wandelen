@@ -52,10 +52,10 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   gedownload zijn (bv. *"3 van 5 gedownload"*). Ben je te ver uitgezoomd, dan vraagt de app
   om **in te zoomen** (met een knop) zodat het ophalen vlot gaat. De routes worden in **één
   vlotte, betrouwbare aanvraag** opgehaald (een streek met tientallen routes komt in enkele
-  seconden binnen) en verschijnen samen op de kaart; je kiest er gewoon één door hem aan te
-  tikken. Een korte **lijst** toont enkel de routes die nog aan het laden zijn — zodra een
-  route op de kaart staat, kies je hem daar. Al eerder bezochte gebieden komen meteen uit de
-  offline-opslag (geen nieuwe download). Routes komen altijd **volledig** binnen (raakt een traject
+  seconden binnen). Je krijgt een **lijst met alle routes** — elk met z'n **naam en lengte** —
+  waaruit je er gewoon één **aantikt** om ze te kiezen (of tik ze aan op de kaart). De afstand
+  blijft altijd zichtbaar, ook bij een lange routenaam. Al eerder bezochte gebieden komen meteen
+  uit de offline-opslag (geen nieuwe download). Routes komen altijd **volledig** binnen (raakt een traject
   ook maar met één hoekje je scherm, dan krijg je heel de route). Tik ◎ om te zien op welke
   routes je staat, kies er één en tik **Volg** — dan wordt die ingeladen en vanaf dan
   volledig offline. Tik op een **leeg stuk kaart** om de keuze weer los te laten. Het
