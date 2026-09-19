@@ -136,12 +136,12 @@
 
   // ---------- Bewegwijzerde wandelroutes (lokale gekleurde lussen) ----------
   const NAMED = {
-    red: '#dc2626', rood: '#dc2626', blue: '#2563eb', blauw: '#2563eb',
-    green: '#16a34a', groen: '#16a34a', yellow: '#eab308', geel: '#eab308',
-    white: '#d1d5db', wit: '#d1d5db', black: '#111827', zwart: '#111827',
-    brown: '#92400e', bruin: '#92400e', orange: '#ea580c', oranje: '#ea580c',
-    purple: '#7c3aed', paars: '#7c3aed', aqua: '#06b6d4', cyan: '#06b6d4',
-    pink: '#db2777', roze: '#db2777', gray: '#6b7280', grey: '#6b7280', grijs: '#6b7280',
+    red: '#dc2626', rood: '#dc2626', rode: '#dc2626', blue: '#2563eb', blauw: '#2563eb', blauwe: '#2563eb',
+    green: '#16a34a', groen: '#16a34a', groene: '#16a34a', yellow: '#eab308', geel: '#eab308', gele: '#eab308',
+    white: '#d1d5db', wit: '#d1d5db', witte: '#d1d5db', black: '#111827', zwart: '#111827', zwarte: '#111827',
+    brown: '#92400e', bruin: '#92400e', bruine: '#92400e', orange: '#ea580c', oranje: '#ea580c',
+    purple: '#7c3aed', paars: '#7c3aed', paarse: '#7c3aed', aqua: '#06b6d4', cyan: '#06b6d4',
+    pink: '#db2777', roze: '#db2777', gray: '#6b7280', grey: '#6b7280', grijs: '#6b7280', grijze: '#6b7280',
   };
   const FALLBACK = ['#e11d48', '#2563eb', '#16a34a', '#eab308', '#7c3aed', '#ea580c', '#06b6d4', '#db2777'];
 
@@ -154,6 +154,38 @@
     }
     if (osmc) { const first = String(osmc).split(':')[0]; if (NAMED[first]) return NAMED[first]; }
     return null;
+  }
+
+  // Vorm van het bordje/paaltje. Bron 1 (betrouwbaar): osmc:symbol, formaat
+  // "waycolor:background:foreground(:tekst)" waarbij foreground = "<kleur>_<vorm>"
+  // (bv. red:white:red_triangle, orange:white:orange_dot, yellow:white:yellow_hexagon).
+  // Bron 2: de Nederlandse routenaam ("Rode driehoek", "Oranje bol", ...).
+  const SHAPE_MAP = {
+    triangle: 'triangle', diamond: 'diamond', rhombus: 'diamond', bar: 'bar', stripe: 'bar',
+    rectangle: 'bar', dot: 'dot', disc: 'dot', circle: 'circle', ring: 'circle',
+    x: 'cross', cross: 'cross', square: 'square', hexagon: 'hexagon', pentagon: 'hexagon',
+    star: 'star', arrow: 'arrow',
+  };
+  const NL_SHAPE = {
+    driehoek: 'triangle', ruit: 'diamond', rechthoek: 'bar', balk: 'bar', streep: 'bar',
+    bol: 'dot', rondje: 'dot', bolletje: 'dot', cirkel: 'circle', vierkant: 'square',
+    kruis: 'cross', zeshoek: 'hexagon', ster: 'star', pijl: 'arrow',
+  };
+  function waymark(t) {
+    let colour = colourToHex(t.colour || t.color, t['osmc:symbol']);
+    let shape = null;
+    const fg = String(t['osmc:symbol'] || '').toLowerCase().split(':')[2] || '';
+    const m = fg.match(/^([a-z]+)_([a-z]+)$/);
+    if (m) {
+      if (!colour && NAMED[m[1]]) colour = NAMED[m[1]];
+      shape = SHAPE_MAP[m[2]] || null;
+    }
+    const name = String(t.name || '').toLowerCase();
+    if (!shape) {
+      for (const w in NL_SHAPE) if (new RegExp('\\b' + w + '\\b').test(name)) { shape = NL_SHAPE[w]; break; }
+    }
+    if (!colour) colour = colourToHex(name);
+    return { shape, colour };
   }
 
   function haversineM(a, b) {
@@ -220,11 +252,13 @@
       const distance = tagDistanceM(t.distance) ||
         Math.round(segs.reduce((a, s) => a + segLen(s), 0));
       const coords = stitch(segs);
+      const wm = waymark(t);
       routes.push({
         id: 'osm-' + e.id, source: 'osm', relId: e.id,
         name: (t.name || t.ref || 'Wandelroute').slice(0, 60),
         ref: t.ref || '',
-        colour: colourToHex(t.colour || t.color, t['osmc:symbol']),
+        colour: wm.colour,
+        shape: wm.shape,
         distance,
         segments: segs,
         coords,
@@ -273,11 +307,13 @@
   }
   function listItem(e) {
     const t = e.tags || {};
+    const wm = waymark(t);
     return {
       id: e.id,
       name: (t.name || t.ref || 'Wandelroute').slice(0, 60),
       ref: t.ref || '',
-      colour: colourToHex(t.colour || t.color, t['osmc:symbol']),
+      colour: wm.colour,
+      shape: wm.shape,
       distance: tagDistanceM(t.distance) || 0,
       center: e.center ? { lat: e.center.lat, lng: e.center.lon } : null,
     };
@@ -332,7 +368,7 @@
     fetchOverlays, fetchRouteList, fetchRoutesByIds, fetchOverlaysArea,
     boundsFromCoords, boundsFromCenter, FALLBACK,
     // Interne functies, blootgesteld voor unit-tests.
-    _test: { parse, parseRoutes, colourToHex, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, listItem, geomQuery, isOverpassError,
+    _test: { parse, parseRoutes, colourToHex, waymark, stitch, buildQuery, postQuery, areaQuery, tagDistanceM, listQuery, listItem, geomQuery, isOverpassError,
       setHedgeMs: (ms) => { HEDGE_MS = ms; }, setRetryMs: (ms) => { RETRY_MS = ms; } },
   };
 })(window);

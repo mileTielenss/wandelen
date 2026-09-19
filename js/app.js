@@ -10,7 +10,7 @@
   //      niet gelijk te zijn aan N — enkel te wijzigen voor een verse shell).
   // De app vergelijkt APP_VERSION met het ongecachete version.json om bij verschil
   // een "nieuwe versie"-balk te tonen.
-  const APP_VERSION = '8';
+  const APP_VERSION = '9';
   let _routes = [];
   let _current = null;      // geopende route op de kaart
   let _menuRoute = null;    // route in het hernoem/verwijder-menu
@@ -295,7 +295,10 @@
       const r = await DB.get(id);
       if (!r) return;
       _current = r;
-      $('map-route-name').textContent = r.name;
+      // Bij een gevolgde bewegwijzerde route: toon het bordje-symbool (vorm + kleur)
+      // naast de naam, zodat je onderweg weet wat je op de paaltjes moet volgen.
+      $('map-route-name').innerHTML =
+        (r.shape ? waymarkSvg(r.shape, r.colour, 18) + ' ' : '') + escapeHtmlApp(r.name);
       $('map-route-meta').textContent =
         `${formatKm(r.distance)} · ${r.coords.length} punten` +
         (r.elevationUp ? ` · ↑${r.elevationUp}m` : '');
@@ -409,7 +412,7 @@
 
     // Lijst-item uit een reeds geladen route (status = klaar).
     _itemFromRoute(r) {
-      return { rid: r.id, id: r.relId, name: r.name, ref: r.ref, colour: r._col || r.colour, distance: r.distance, status: 'klaar' };
+      return { rid: r.id, id: r.relId, name: r.name, ref: r.ref, colour: r._col || r.colour, shape: r.shape, distance: r.distance, status: 'klaar' };
     },
 
     _renderExploreList(items) {
@@ -430,7 +433,7 @@
         b.className = 'explore-item';
         b.dataset.rid = it.rid;
         b.innerHTML =
-          `<span class="swatch" style="background:${it.colour || '#94a3b8'}"></span>` +
+          waymarkSvg(it.shape, it.colour) +
           '<span class="x-name"></span>' +
           `<span class="x-dist">${it.distance ? formatKm(it.distance) : ''}</span>` +
           `<span class="x-state ${it.status === 'laden' ? 'laden' : ''}">${this._stateIcon(it.status)}</span>`;
@@ -692,7 +695,7 @@
       // Naam (kort ingekort bij lange namen) + afstand als apart, altijd zichtbaar
       // kolommetje — zo valt de afstand niet weg achter een lange routenaam.
       $('explore-selname').innerHTML =
-        `<span class="swatch" style="background:${rt._col}"></span>` +
+        waymarkSvg(rt.shape, rt._col, 22) +
         `<span class="sel-name">${escapeHtmlApp(rt.name)}${rt.ref ? ' · ' + escapeHtmlApp(rt.ref) : ''}</span>` +
         (rt.distance ? `<span class="sel-dist">${formatKm(rt.distance)}</span>` : '');
       $('explore-follow').disabled = false;
@@ -724,7 +727,9 @@
         id: rt.id,
         source: 'osm',
         name: rt.name,
+        ref: rt.ref,
         colour: rt._col,
+        shape: rt.shape,
         sport: 'hike',
         coords: rt.coords.map((c) => [c[0], c[1], 0]),
         distance: rt.distance,
@@ -883,7 +888,7 @@
           name: 'Regio ' + cx.toFixed(3) + ', ' + cy.toFixed(3),
           bounds,
           routes: routes.map((r) => ({
-            id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col,
+            id: r.id, name: r.name, ref: r.ref, colour: r.colour, _col: r._col, shape: r.shape,
             distance: r.distance, segments: r.segments, coords: r.coords,
           })),
           nodes: (overlays && overlays.nodes) || [],
@@ -1113,6 +1118,29 @@
   function sportLabel(s) {
     const map = { hike: 'Wandelen', touringbicycle: 'Fietsen', mtb: 'MTB', jogging: 'Joggen', racebike: 'Racefiets' };
     return map[s] || 'Route';
+  }
+  // Klein wit chipje met de VORM + KLEUR van het bordje/paaltje dat je moet volgen
+  // (zoals op de infoborden: rode driehoek, oranje bol, groene rechthoek, …). Zonder
+  // herkende vorm → een gevuld bolletje in de routekleur.
+  const WM_SHAPE = {
+    triangle: (c) => `<polygon points="9,3.5 15,14 3,14" fill="${c}"/>`,
+    diamond: (c) => `<polygon points="9,2.5 15.5,9 9,15.5 2.5,9" fill="${c}"/>`,
+    bar: (c) => `<rect x="2.5" y="6.75" width="13" height="4.5" rx="1" fill="${c}"/>`,
+    dot: (c) => `<circle cx="9" cy="9" r="5" fill="${c}"/>`,
+    circle: (c) => `<circle cx="9" cy="9" r="5.4" fill="none" stroke="${c}" stroke-width="2.4"/>`,
+    square: (c) => `<rect x="4" y="4" width="10" height="10" fill="${c}"/>`,
+    cross: (c) => `<path d="M4.5 4.5 L13.5 13.5 M13.5 4.5 L4.5 13.5" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`,
+    hexagon: (c) => `<polygon points="9,2.5 14.6,5.75 14.6,12.25 9,15.5 3.4,12.25 3.4,5.75" fill="${c}"/>`,
+    star: (c) => `<polygon points="9,2.4 10.6,7.1 15.5,7.1 11.5,10.1 13,15 9,12 5,15 6.5,10.1 2.5,7.1 7.4,7.1" fill="${c}"/>`,
+    arrow: (c) => `<polygon points="3,7 10,7 10,4 16,9 10,14 10,11 3,11" fill="${c}"/>`,
+  };
+  function waymarkSvg(shape, colour, size) {
+    const c = colour || '#64748b';
+    const inner = (WM_SHAPE[shape] || WM_SHAPE.dot)(c);
+    const px = size || 20;
+    return `<svg class="wm" viewBox="0 0 18 18" width="${px}" height="${px}" aria-hidden="true">` +
+      `<rect x="0.75" y="0.75" width="16.5" height="16.5" rx="4.5" fill="#fff" stroke="rgba(0,0,0,.3)"/>` +
+      inner + '</svg>';
   }
   function thumbSvg(coords) {
     if (!coords || coords.length < 2) return '';

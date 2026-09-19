@@ -52,9 +52,12 @@ De app is voorgeladen met de route **“from Lommel to Grote Heide”** (18,8 km
   gedownload zijn (bv. *"3 van 5 gedownload"*). Ben je te ver uitgezoomd, dan vraagt de app
   om **in te zoomen** (met een knop) zodat het ophalen vlot gaat. De routes worden in **één
   vlotte, betrouwbare aanvraag** opgehaald (een streek met tientallen routes komt in enkele
-  seconden binnen). Je krijgt een **lijst met alle routes** — elk met z'n **naam en lengte** —
-  waaruit je er gewoon één **aantikt** om ze te kiezen (of tik ze aan op de kaart). De afstand
-  blijft altijd zichtbaar, ook bij een lange routenaam. Al eerder bezochte gebieden komen meteen
+  seconden binnen). Je krijgt een **lijst met alle routes** — elk met z'n **naam, lengte en het
+  bordje-symbool** (de vorm + kleur die je op de paaltjes moet volgen, bv. 🔺 rode driehoek, 🟠 oranje
+  bol, 🔷 blauwe ruit) — waaruit je er gewoon één **aantikt** om ze te kiezen (of tik ze aan op de
+  kaart). De afstand blijft altijd zichtbaar, ook bij een lange routenaam. Volg je een route, dan
+  staat dat symbool ook naast de routenaam op de kaart, zodat je onderweg weet wat je moet volgen.
+  Al eerder bezochte gebieden komen meteen
   uit de offline-opslag (geen nieuwe download). Routes komen altijd **volledig** binnen (raakt een traject
   ook maar met één hoekje je scherm, dan krijg je heel de route). Tik ◎ om te zien op welke
   routes je staat, kies er één en tik **Volg** — dan wordt die ingeladen en vanaf dan
@@ -125,7 +128,7 @@ npm install   # eenmalig (playwright-core)
 npm test      # unit- + E2E-suite met coverage-rapport
 ```
 
-De suite (`tests/run.mjs`) draait 395 asserts in een headless Chromium: unit-tests van
+De suite (`tests/run.mjs`) draait 400 asserts in een headless Chromium: unit-tests van
 alle pure logica en E2E-scenario's voor elk scherm, elke flow én elk foutpad — import
 (incl. proxy-fallback, kapotte payloads en netwerkfouten), kaartlagen, overlays, locatie,
 tracking (incl. regressietest op de rode-stip-bug, geweigerde/uitgevallen GPS),
