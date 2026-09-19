@@ -19,7 +19,7 @@ batterijverbruik** en **alles automatisch offline**.
 
 ```bash
 python3 -m http.server 8080     # app lokaal op http://localhost:8080
-npm install && npm test         # testsuite (395 asserts) + coverage-rapport
+npm install && npm test         # testsuite (400 asserts) + coverage-rapport
 UNCOVERED=1 npm test            # toont ongedekte regels (hoort leeg te zijn)
 ```
 
@@ -57,6 +57,7 @@ Route (IndexedDB store `routes`, keyPath `id`):
 { id: 'komoot-<tourId>' | 'osm-<relId>',   // bron bepaalt prefix
   source: 'komoot' | 'osm' | 'gpx' | 'kml',   // gpx/kml: id = '<bron>-'+hash(coords); gpxVorm 'track'|'route'|'punten'
   name, sport, distance /*m*/, elevationUp, elevationDown, duration,
+  colour, shape,                            // OSM-routes: bordje-symbool (kleur-hex + vorm), zie waymark()
   coords: [[lat, lng, alt], …],            // volledige polyline
   nodes:  [{ ref, lat, lng }, …],          // wandelknooppunten (Overpass), via 🗺-schakelaar
   waypoints: [{ ref, name, lat, lng }, …], // route-EIGEN punten (KML/bordjes): ALTIJD zichtbaar
@@ -81,8 +82,12 @@ Een tik op een route selecteert hem (loaded → meteen; nog niet → `_onExplore
 voorrang op); de route **blijft** in de lijst (kiezen ≠ verwijderen). Afstand komt uit fase 1 (tag)
 en wordt bij het laden bijgewerkt naar de gemeten waarde (`_setExploreItemDistance`). De afstand
 staat in een **eigen kolom** (list én `#explore-selname` → `.sel-name`/`.sel-dist`) zodat een lange
-naam de afstand niet wegduwt. Is de lijst leeg, dan verdwijnt hij samen met de inklap-knop. De lijst
-is **inklapbaar** (`#explore-collapse` →
+naam de afstand niet wegduwt. Elke route toont ook het **bordje-symbool** (vorm + kleur van de
+paaltjes) als een wit chipje (`waymarkSvg` in `js/app.js`, vorm/kleur uit `Overpass.waymark`:
+`osmc:symbol` → foreground `<kleur>_<vorm>`, met de Nederlandse routenaam als fallback). Datzelfde
+symbool staat naast de gekozen route én — bij een gevolgde route — in de kaart-kop (`#map-route-name`),
+zodat je onderweg weet wat je moet volgen. Is de lijst leeg, dan verdwijnt hij samen met de inklap-knop.
+De lijst is **inklapbaar** (`#explore-collapse` →
 `App.toggleExploreList`, ▾/▸) zodat een lange lijst de kaart niet bedekt. `_exploreFetch` werkt zo:
 0. **Zoom-poort:** is de view te groot (> ±0.16°), dan géén trage query maar de zoom-in-hint
    (kleiner gebied = snellere, betrouwbaardere Overpass-call).

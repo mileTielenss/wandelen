@@ -142,7 +142,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
   padding: 8px 10px; color: #e2e8f0; font-size: 14px; cursor: pointer;
 }
 .explore-item.is-selected { border-color: #38bdf8; background: rgba(56,189,248,.14); }
-.explore-item .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,.5); flex: none; }
+.explore-item .wm { flex: none; display: block; }
 .explore-item .x-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explore-item .x-dist { color: #94a3b8; font-size: 12.5px; flex: none; font-variant-numeric: tabular-nums; }
 .explore-item .x-state { flex: none; font-size: 15px; width: 18px; text-align: center; }
@@ -152,7 +152,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
 .explore-selected #explore-selname { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .explore-selected #explore-selname .sel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explore-selected #explore-selname .sel-dist { flex: none; color: #94a3b8; font-weight: 500; font-variant-numeric: tabular-nums; }
-.explore-selected #explore-selname .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.5); flex: none; }
+.explore-selected #explore-selname .wm { flex: none; display: block; }
 .explore-selected .primary { flex: none; }
 .explore-selected .primary:disabled { opacity: .5; }
 
@@ -219,6 +219,7 @@ button[disabled] { opacity: .55; pointer-events: none; }
 .map-title { min-width: 0; max-width: 62vw; text-align: center; line-height: 1.15; }
 .map-title span { display: block; font-weight: 600; font-size: 15px; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .map-title small { color: #cbd5e1; font-size: 12px; }
+#map-route-name .wm { display: inline-block; vertical-align: -4px; margin-right: 3px; }
 
 .map-controls {
   position: absolute; right: 14px; bottom: calc(var(--safe-bottom) + 24px); z-index: 500;

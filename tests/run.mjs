@@ -1629,6 +1629,24 @@ await scenario('S12c progressief laden — takken', {
       ok('abort tijdens retry-pauze → afgebroken', msg === 'afgebroken');
     }
 
+    // 16) Bordje-symbool (vorm + kleur van de paaltjes): uit osmc:symbol én uit de naam.
+    ok('waymark: osmc red_triangle → driehoek + rood', (() => {
+      const w = Overpass._test.waymark({ 'osmc:symbol': 'red:white:red_triangle' });
+      return w.shape === 'triangle' && w.colour === '#dc2626';
+    })());
+    ok('waymark: kleur uit foreground als waycolor onbekend', (() => {
+      const w = Overpass._test.waymark({ 'osmc:symbol': 'green_frame:white:orange_dot' });
+      return w.shape === 'dot' && w.colour === '#ea580c';
+    })());
+    ok('waymark: naam-fallback zonder osmc (rechthoek → bar)',
+      Overpass._test.waymark({ name: 'Kattenbos Groene rechthoek' }).shape === 'bar');
+    ok('waymark: geen herkenbare vorm → null',
+      Overpass._test.waymark({ name: 'Gewoon bospad' }).shape === null);
+    // Chipje in de lijst renderen voor élke vorm (dekt de SVG-bouwers).
+    App._renderExploreList(['triangle', 'diamond', 'bar', 'dot', 'circle', 'square', 'cross', 'hexagon', 'star', 'arrow', null]
+      .map((sh, i) => ({ rid: 'osm-s' + i, id: i, name: 'S' + i, colour: '#dc2626', shape: sh, distance: 0, status: 'klaar' })));
+    ok('elk vorm-chipje getekend (SVG)', document.querySelectorAll('.explore-item .wm').length === 11);
+
     // 6) Lagen-sheet met nog lege tellingen (nc/hc null) → geen "(… )".
     MapView._nodeCount = null; MapView._horecaCount = null;
     App.openLayers();
